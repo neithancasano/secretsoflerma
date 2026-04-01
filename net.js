@@ -40,6 +40,13 @@
         }
       }
 
+      function sendHello() {
+        // Always read from LERMA_USER at send time, not at connect time
+        const user = window.LERMA_USER;
+        const name = (user && user.displayName) ? user.displayName : "Traveler";
+        safeSend({ t: "HELLO", name });
+      }
+
       function connectNow() {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         ws = new WebSocket(wsURL());
@@ -47,12 +54,7 @@
         ws.onopen = () => {
           log("connected");
           reconnectDelayMs = 500;
-
-          // Send identity from Firebase login
-          const user = window.LERMA_USER;
-          const name = user ? user.displayName : (localStorage.getItem("lerma_name") || "Traveler");
-          safeSend({ t: "HELLO", name });
-
+          sendHello();
           flushQueue();
           startHeartbeat();
         };
