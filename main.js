@@ -19,7 +19,7 @@
     players: new Map(),
     npcs: new Map(),
     origin: { x: 0, y: 0 },
-    attackTarget: null, // npc id we're currently attacking
+    attackTarget: null,
   };
 
   let lastSaveAt = 0;
@@ -89,8 +89,6 @@
       const pupL  = scene.add.circle(-4*s, -10*s, 1*s, 0x222222);
       const pupR  = scene.add.circle( 4*s, -10*s, 1*s, 0x222222);
       const label = scene.add.text(0, -26*s, name||'Poring', { fontSize:'10px', fontFamily:'system-ui,sans-serif', color:vis.labelColor, stroke:'#0b1020', strokeThickness:3, resolution:2 }).setOrigin(0.5,1);
-
-      // HP bar background + fill
       const hpBg   = scene.add.rectangle(0, -38*s, 30, 4, 0x333333).setOrigin(0.5, 0.5);
       const hpFill = scene.add.rectangle(-15, -38*s, 30, 4, 0xff4444).setOrigin(0, 0.5);
 
@@ -98,12 +96,10 @@
       container.setSize(30, 30);
       container.setInteractive();
 
-      // Click to attack!
       container.on('pointerdown', (ptr) => {
         ptr.event.stopPropagation();
         STATE.attackTarget = id;
         scene.net.send({ t: 'ATTACK_NPC', npcId: id });
-        // Visual feedback — highlight target
         body.setStrokeStyle(2, 0xffff00);
       });
       container.on('pointerover', () => { scene.input.setDefaultCursor('crosshair'); });
@@ -135,9 +131,9 @@
     e.sprite.setDepth((e.ty + e.tx) * 10 + (isNpc ? 4 : 5));
   }
 
-  // ── Floating damage number ──
-  function spawnDmgNumber(scene, x, y, dmg) {
-    const txt = scene.add.text(x, y - 20, `-${dmg}`, {
+  // ── Floating damage number — uses WORLD coords so it stays on the Poring ──
+  function spawnDmgNumber(scene, worldX, worldY, dmg) {
+    const txt = scene.add.text(worldX, worldY - 20, `-${dmg}`, {
       fontSize: '14px', fontFamily: 'system-ui,sans-serif',
       color: '#ff4444', stroke: '#000', strokeThickness: 3,
       fontStyle: 'bold', resolution: 2
@@ -145,9 +141,9 @@
 
     scene.tweens.add({
       targets: txt,
-      y: y - 50,
+      y: worldY - 55,
       alpha: 0,
-      duration: 800,
+      duration: 900,
       ease: 'Power2',
       onComplete: () => txt.destroy()
     });
@@ -169,14 +165,11 @@
       this.recomputeOrigin();
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
 
-      // Click on map to move (not on NPCs — they have their own handler)
       this.input.on('pointerdown', (pointer) => {
         if (pointer.event.defaultPrevented) return;
-        // Cancel attack when clicking empty space
         if (STATE.attackTarget) {
           STATE.attackTarget = null;
           this.net.send({ t: 'CANCEL_ATTACK' });
-          // Remove highlight from all npcs
           for (const n of STATE.npcs.values()) n.body.setStrokeStyle(0);
         }
         const cam = this.cameras.main;
@@ -251,27 +244,22 @@
         return;
       }
 
-      // ── Combat events ──
       if (msg.t === 'NPC_HIT') {
         const n = STATE.npcs.get(msg.npcId);
         if (!n) return;
-        // Update HP bar
         n.hp = msg.hp;
         const pct = Math.max(0, n.hp / n.maxHp);
         n.hpFill.width = 30 * pct;
-        // Flash red
         n.body.setFillStyle(0xff0000);
         setTimeout(() => { if (n.body) n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor || 0xff6eb4); }, 120);
-        // Floating damage number
-        const s = tileToScreen(n.rx ?? n.tx, n.ry ?? n.ty);
-        spawnDmgNumber(this, s.x - this.cameras.main.scrollX, s.y - this.cameras.main.scrollY, msg.dmg);
+        // Use world coords — damage floats over the Poring correctly
+        spawnDmgNumber(this, n.sprite.x, n.sprite.y, msg.dmg);
         return;
       }
 
       if (msg.t === 'NPC_DIED') {
         const n = STATE.npcs.get(msg.npcId);
         if (!n) return;
-        // Death flash then disappear
         n.body.setFillStyle(0xffffff);
         this.time.delayedCall(200, () => removeNPC(msg.npcId));
         return;
