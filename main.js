@@ -1,14 +1,12 @@
 (function () {
-  // Isometric tile size (tweak these to taste)
-  // RO-ish feel: wide diamond tiles
-  const ISO_W = 48;   // tile width in pixels
-  const ISO_H = 24;   // tile height in pixels
+  const ISO_W = 48;
+  const ISO_H = 24;
 
   const STATE = {
     you: null,
     map: { w: 60, h: 40 },
-    players: new Map(), // id -> { id, tx,ty, rx,ry, sprite }
-    origin: { x: 480, y: 90 } // screen offset (we’ll recompute on WELCOME)
+    players: new Map(),
+    origin: { x: 480, y: 90 }
   };
 
   function tileToScreen(tx, ty) {
@@ -18,14 +16,10 @@
   }
 
   function screenToTile(sx, sy) {
-    // remove origin first
     const x = sx - STATE.origin.x;
     const y = sy - STATE.origin.y;
-
-    // invert the isometric transform
     const tx = (y / (ISO_H / 2) + x / (ISO_W / 2)) / 2;
     const ty = (y / (ISO_H / 2) - x / (ISO_W / 2)) / 2;
-
     return { tx, ty };
   }
 
@@ -35,18 +29,29 @@
     return { tx, ty };
   }
 
-  function upsertPlayer(scene, id, tx, ty) {
+  function upsertPlayer(scene, id, tx, ty, name) {
     let p = STATE.players.get(id);
 
     if (!p) {
-      // “pill” placeholder: ellipse with a tiny “body” rect above it
+      // Player sprite — pill shape
       const base = scene.add.ellipse(0, 0, 18, 10, 0x7dd3fc).setOrigin(0.5, 0.5);
       const body = scene.add.rectangle(0, 0, 10, 16, 0x7dd3fc).setOrigin(0.5, 1);
 
-      const container = scene.add.container(0, 0, [body, base]);
+      // Name label above the sprite
+      const label = scene.add.text(0, -24, name || id, {
+        fontSize: '11px',
+        fontFamily: 'system-ui, sans-serif',
+        color: '#e2e8f0',
+        stroke: '#0b1020',
+        strokeThickness: 3,
+        resolution: 2
+      }).setOrigin(0.5, 1);
 
-      p = { id, tx, ty, rx: tx, ry: ty, sprite: container };
+      const container = scene.add.container(0, 0, [body, base, label]);
+      p = { id, tx, ty, rx: tx, ry: ty, sprite: container, label };
       STATE.players.set(id, p);
+    } else if (name && p.label) {
+      p.label.setText(name);
     }
 
     p.tx = tx;
@@ -63,17 +68,15 @@
   function setPlayerVisual(p) {
     const isYou = (p.id === STATE.you);
     const color = isYou ? 0xa3e635 : 0x7dd3fc;
-
-    // container children: [bodyRect, baseEllipse]
-    const body = p.sprite.list[0];
-    const base = p.sprite.list[1];
+    const body  = p.sprite.list[0];
+    const base  = p.sprite.list[1];
     body.fillColor = color;
     base.fillColor = color;
+    // Your own name is brighter
+    if (p.label) p.label.setColor(isYou ? '#a3e635' : '#e2e8f0');
   }
 
   function setDepth(p) {
-    // Depth sorting: farther “down” should be in front.
-    // Using (tx+ty) is a classic cheap depth key.
     p.sprite.setDepth((p.ty + p.tx) * 10 + 5);
   }
 
@@ -82,8 +85,6 @@
 
     create() {
       this.cameras.main.setBackgroundColor("#0b1020");
-
-      // Full-window game (nice for WP pages too)
       this.scale.resize(window.innerWidth, window.innerHeight);
       window.addEventListener("resize", () => {
         this.scale.resize(window.innerWidth, window.innerHeight);
@@ -92,50 +93,36 @@
       });
 
       this.grid = this.add.graphics();
-
       this.recomputeOrigin();
       this.drawIsoGrid();
 
+      // Pass display name to the server on connect
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
 
       this.input.on("pointerdown", (pointer) => {
-        // Convert click point to tile coords
         const { tx, ty } = screenToTile(pointer.worldX, pointer.worldY);
-        const fx = Math.floor(tx);
-        const fy = Math.floor(ty);
-        const c = clampTile(fx, fy);
-
+        const c = clampTile(Math.floor(tx), Math.floor(ty));
         this.net.send({ t: "MOVE_TO", seq: (Date.now() % 1000000), x: c.tx, y: c.ty });
       });
     }
 
     recomputeOrigin() {
-      // Center the whole diamond-ish map nicely in the viewport.
-      // Rough map pixel extents:
-      const mapWpx = (STATE.map.w + STATE.map.h) * (ISO_W / 2);
       const mapHpx = (STATE.map.w + STATE.map.h) * (ISO_H / 2);
-
       STATE.origin.x = Math.floor(this.scale.width / 2);
-      STATE.origin.y = Math.floor((this.scale.height - mapHpx) / 2) + 60; // push down a bit
+      STATE.origin.y = Math.floor((this.scale.height - mapHpx) / 2) + 60;
     }
 
     drawIsoGrid() {
       const g = this.grid;
       g.clear();
       g.lineStyle(1, 0x1f2a44, 1);
-
-      // Prototype: draw all tiles (OK for small maps).
-      // Later we can draw only visible area for big maps.
       for (let y = 0; y < STATE.map.h; y++) {
         for (let x = 0; x < STATE.map.w; x++) {
           const c = tileToScreen(x, y);
-
-          // diamond corners
-          const top    = { x: c.x,               y: c.y - ISO_H / 2 };
-          const right  = { x: c.x + ISO_W / 2,   y: c.y };
-          const bottom = { x: c.x,               y: c.y + ISO_H / 2 };
-          const left   = { x: c.x - ISO_W / 2,   y: c.y };
-
+          const top    = { x: c.x,             y: c.y - ISO_H / 2 };
+          const right  = { x: c.x + ISO_W / 2, y: c.y };
+          const bottom = { x: c.x,             y: c.y + ISO_H / 2 };
+          const left   = { x: c.x - ISO_W / 2, y: c.y };
           g.strokePoints([top, right, bottom, left, top], false);
         }
       }
@@ -151,25 +138,16 @@
 
       if (msg.t === "SNAPSHOT") {
         STATE.you = msg.you;
-
         for (const id of Array.from(STATE.players.keys())) removePlayer(id);
-        for (const pl of msg.players) upsertPlayer(this, pl.id, pl.x, pl.y);
-
-        for (const p of STATE.players.values()) {
-          setPlayerVisual(p);
-          setDepth(p);
-        }
+        for (const pl of msg.players) upsertPlayer(this, pl.id, pl.x, pl.y, pl.name);
+        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p); }
         return;
       }
 
       if (msg.t === "DELTA") {
         if (Array.isArray(msg.rm)) for (const id of msg.rm) removePlayer(id);
-        if (Array.isArray(msg.up)) for (const u of msg.up) upsertPlayer(this, u.id, u.x, u.y);
-
-        for (const p of STATE.players.values()) {
-          setPlayerVisual(p);
-          setDepth(p);
-        }
+        if (Array.isArray(msg.up)) for (const u of msg.up) upsertPlayer(this, u.id, u.x, u.y, u.name);
+        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p); }
         return;
       }
     }
@@ -177,19 +155,12 @@
     update(_, dtMs) {
       const dt = dtMs / 1000;
       const FOLLOW = 16;
-
       for (const p of STATE.players.values()) {
-        // Smooth in tile space
         p.rx += (p.tx - p.rx) * Math.min(1, FOLLOW * dt);
         p.ry += (p.ty - p.ry) * Math.min(1, FOLLOW * dt);
-
-        // Convert to screen space for rendering
         const s = tileToScreen(p.rx, p.ry);
-
-        // RO feel: feet on tile, body above it
         p.sprite.x = s.x;
         p.sprite.y = s.y - 6;
-
         setDepth(p);
       }
     }
@@ -202,7 +173,3 @@
     scene: [MainScene]
   });
 })();
-
-
-// hello, G. Can you see this? I had corned beef for breakfast haha
-// Alright next secret message. I'm using Belo Essentials to whiten my skin hahahaha
