@@ -179,7 +179,83 @@ git commit -m "describe what you changed"
 git push
 ```
 
+When G pushes code directly via MCP, pull it down to your server:
+
+```bash
+git pull origin master
+```
+
 Claude can now read your latest code in any conversation. No copy-pasting. No lost context. 🪨
+
+---
+
+## Sync Cheatsheet
+
+| Situation | Command |
+|---|---|
+| Check if everything is in sync | `git status` |
+| See last 5 commits | `git log --oneline -5` |
+| Discard changes to one file | `git checkout -- filename.js` |
+| Discard ALL local changes | `git reset --hard origin/master` |
+| Pull latest from GitHub | `git pull origin master` |
+
+---
+
+## Server Management (Node.js + pm2)
+
+### First-time pm2 setup for a new server project
+
+```bash
+cd /opt/bitnami/game-servers/your-project
+pm2 start index.js --name your-project-name
+pm2 save
+pm2 startup
+# Copy and run the command pm2 startup gives you
+```
+
+### Make pm2 survive reboots permanently
+```bash
+sudo env PATH=$PATH:/usr/local/node/bin /usr/local/node/lib/node_modules/pm2/bin/pm2 startup systemd -u bitnami --hp /home/bitnami
+pm2 save
+```
+
+### If a systemd service conflicts with pm2 (port already in use)
+```bash
+# Stop and permanently delete the conflicting service
+sudo systemctl stop your-service-name
+sudo systemctl disable your-service-name
+sudo rm /etc/systemd/system/your-service-name.service
+sudo systemctl daemon-reload
+
+# Then restart pm2
+pm2 restart your-project-name
+```
+
+### Daily pm2 commands
+
+| Command | What it does |
+|---|---|
+| `pm2 list` | See all running processes + restart count |
+| `pm2 restart your-project` | Restart your server |
+| `pm2 logs your-project` | See live logs |
+| `pm2 logs your-project --lines 30` | See last 30 log lines |
+| `pm2 stop your-project` | Stop the server |
+| `pm2 monit` | Live CPU/memory dashboard |
+
+### Warning signs to watch for
+- **↺ restart count > 10** in `pm2 list` → server is crash-looping, check logs immediately
+- **CPU at 100%** in Lightsail metrics → likely a restart loop or runaway process
+- **EADDRINUSE error** in logs → another process is holding the port, find and kill it:
+
+```bash
+sudo ss -tlnp | grep YOUR_PORT
+sudo kill -9 THE_PID
+pm2 restart your-project
+```
+
+### Add a Static IP (do this once — free on Lightsail!)
+- Lightsail console → Networking → Create static IP → Attach to instance
+- Your IP never changes again — no need to update SSH config after reboots
 
 ---
 
@@ -189,9 +265,12 @@ Claude can now read your latest code in any conversation. No copy-pasting. No lo
 |---|---|
 | `git: command not found` | Run `sudo apt-get install git -y` |
 | GitHub push asks for password | Use your Personal Access Token, not your password |
-| VS Code can't connect | Check your .pem file path in SSH config |
+| VS Code can't connect | Check your .pem file path in SSH config. If IP changed, update HostName |
 | Claude can't see repo | Make sure GitHub toggle is ON in Connectors menu |
 | `bullseye-backports` error on apt | Safe to ignore, main repos still work |
+| Port already in use (EADDRINUSE) | `sudo ss -tlnp | grep PORT` → kill the PID → `pm2 restart` |
+| CPU spike to 100% | Check `pm2 list` for high restart count. Check `sudo ss -tlnp` for duplicate processes |
+| pm2 list is empty after reboot | Run `pm2 startup` and `pm2 save` again |
 
 ---
 
