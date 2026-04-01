@@ -87,7 +87,7 @@
       import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
                                        from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
-      // 🔑 Firebase config — move to environment variables before going public!
+      // 🔑 Firebase config
       const firebaseConfig = {
         apiKey:            "AIzaSyDVq6qM2duD5t0DpqOXjHJKJhwkO_qrhng",
         authDomain:        "secretsoflerma.firebaseapp.com",
@@ -108,15 +108,17 @@
       const btnLogout   = document.getElementById("btn-logout");
       const loginError  = document.getElementById("login-error");
 
+      // Cache buster — bump this when you want browsers to reload JS files
+      const V = Date.now();
+
       // ── Auth state listener ──
       onAuthStateChanged(auth, (user) => {
         if (user) {
-          // Player is logged in
           loginScreen.style.display  = "none";
           gameUI.style.display       = "block";
           uiName.textContent         = user.displayName || user.email;
 
-          // Boot the game and pass identity
+          // Set identity BEFORE loading game scripts
           window.LERMA_USER = {
             uid:         user.uid,
             displayName: user.displayName || user.email,
@@ -125,16 +127,17 @@
 
           if (!window.LERMA_GAME_STARTED) {
             window.LERMA_GAME_STARTED = true;
-            // Small delay so DOM is ready
-            setTimeout(() => {
-              const s = document.createElement("script"); s.src = "./net.js";  document.body.appendChild(s);
-              s.onload = () => {
-                const m = document.createElement("script"); m.src = "./main.js"; document.body.appendChild(m);
-              };
-            }, 100);
+            // Load scripts with cache-busting version param
+            const s = document.createElement("script");
+            s.src = `./net.js?v=${V}`;
+            document.body.appendChild(s);
+            s.onload = () => {
+              const m = document.createElement("script");
+              m.src = `./main.js?v=${V}`;
+              document.body.appendChild(m);
+            };
           }
         } else {
-          // Not logged in
           loginScreen.style.display = "flex";
           gameUI.style.display      = "none";
         }
