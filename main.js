@@ -20,6 +20,8 @@
     npcs: new Map(),
     origin: { x: 0, y: 0 },
     attackTarget: null,
+    playerHp: 100,
+    playerMaxHp: 100,
   };
 
   let lastSaveAt = 0;
@@ -56,7 +58,7 @@
       const body  = scene.add.rectangle(0, 0, 10, 16, 0x7dd3fc).setOrigin(0.5, 1);
       const label = scene.add.text(0, -24, name||id, { fontSize:'11px', fontFamily:'system-ui,sans-serif', color:'#e2e8f0', stroke:'#0b1020', strokeThickness:3, resolution:2 }).setOrigin(0.5,1);
       const container = scene.add.container(0, 0, [body, base, label]);
-      p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label };
+      p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, body };
       STATE.players.set(id, p);
     } else if (name && p.label) p.label.setText(name);
     p.tx = tx; p.ty = ty;
@@ -115,7 +117,6 @@
       n.hpFill.width = 30 * pct;
       n.hpFill.x = -15;
     }
-
     n.tx = tx; n.ty = ty;
   }
 
@@ -131,22 +132,27 @@
     e.sprite.setDepth((e.ty + e.tx) * 10 + (isNpc ? 4 : 5));
   }
 
-  // ── Floating damage number — uses WORLD coords so it stays on the Poring ──
-  function spawnDmgNumber(scene, worldX, worldY, dmg) {
+  function spawnDmgNumber(scene, worldX, worldY, dmg, color) {
     const txt = scene.add.text(worldX, worldY - 20, `-${dmg}`, {
       fontSize: '14px', fontFamily: 'system-ui,sans-serif',
-      color: '#ff4444', stroke: '#000', strokeThickness: 3,
+      color: color || '#ff4444', stroke: '#000', strokeThickness: 3,
       fontStyle: 'bold', resolution: 2
     }).setOrigin(0.5, 1).setDepth(9999);
-
     scene.tweens.add({
-      targets: txt,
-      y: worldY - 55,
-      alpha: 0,
-      duration: 900,
-      ease: 'Power2',
+      targets: txt, y: worldY - 55, alpha: 0, duration: 900, ease: 'Power2',
       onComplete: () => txt.destroy()
     });
+  }
+
+  // Update the player HP bar in the UI
+  function updatePlayerHpBar() {
+    const bar = document.getElementById('player-hp-fill');
+    const txt = document.getElementById('player-hp-text');
+    if (!bar || !txt) return;
+    const pct = Math.max(0, STATE.playerHp / STATE.playerMaxHp) * 100;
+    bar.style.width = pct + '%';
+    txt.textContent = `HP: ${STATE.playerHp} / ${STATE.playerMaxHp}`;
+    bar.style.background = pct > 50 ? '#4ade80' : pct > 25 ? '#facc15' : '#ef4444';
   }
 
   class MainScene extends Phaser.Scene {
@@ -164,6 +170,15 @@
       this.tileGraphics = this.add.graphics();
       this.recomputeOrigin();
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
+
+      // Inject HP bar into page
+      if (!document.getElementById('player-hp-bar')) {
+        const bar = document.createElement('div');
+        bar.id = 'player-hp-bar';
+        bar.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:200px;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 8px;z-index:10;font-family:system-ui,sans-serif;';
+        bar.innerHTML = `<div id="player-hp-text" style="color:#94a3b8;font-size:11px;margin-bottom:3px;">HP: 100 / 100</div><div style="background:#334155;border-radius:3px;height:8px;overflow:hidden"><div id="player-hp-fill" style="height:100%;width:100%;background:#4ade80;border-radius:3px;transition:width 0.2s,background 0.2s"></div></div>`;
+        document.body.appendChild(bar);
+      }
 
       this.input.on('pointerdown', (pointer) => {
         if (pointer.event.defaultPrevented) return;
@@ -252,7 +267,6 @@
         n.hpFill.width = 30 * pct;
         n.body.setFillStyle(0xff0000);
         setTimeout(() => { if (n.body) n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor || 0xff6eb4); }, 120);
-        // Use world coords — damage floats over the Poring correctly
         spawnDmgNumber(this, n.sprite.x, n.sprite.y, msg.dmg);
         return;
       }
@@ -271,6 +285,22 @@
         if (n) setDepth(n, true);
         return;
       }
+
+      // ── Poring bites YOU ──
+      if (msg.t === 'PLAYER_HIT') {
+        STATE.playerHp = Math.max(0, STATE.playerHp - msg.dmg);
+        updatePlayerHpBar();
+        // Flash your own sprite red
+        const me = STATE.players.get(STATE.you);
+        if (me) {
+          me.sprite.list[0].setFillStyle(0xff4444); // body
+          me.sprite.list[1].setFillStyle(0xff4444); // base
+          setTimeout(() => setPlayerVisual(me), 150);
+        }
+        // Damage number in orange above your character
+        if (me) spawnDmgNumber(this, me.sprite.x, me.sprite.y, msg.dmg, '#ff9900');
+        return;
+      }
     }
 
     update(_, dtMs) {
@@ -286,8 +316,8 @@
       }
 
       for (const n of STATE.npcs.values()) {
-        n.rx += (n.tx - n.rx) * Math.min(1, FOLLOW * 0.4 * dt);
-        n.ry += (n.ty - n.ry) * Math.min(1, FOLLOW * 0.4 * dt);
+        n.rx += (n.tx - n.rx) * Math.min(1, FOLLOW * 0.5 * dt);
+        n.ry += (n.ty - n.ry) * Math.min(1, FOLLOW * 0.5 * dt);
         const s = tileToScreen(n.rx, n.ry);
         n.sprite.x = s.x; n.sprite.y = s.y - 4;
         setDepth(n, true);
