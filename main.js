@@ -20,9 +20,10 @@
     npcs: new Map(),
     origin: { x: 0, y: 0 },
     attackTarget: null,
-    clickConsumed: false, // flag: NPC was clicked, ignore map click this frame
+    clickConsumed: false,
     playerHp: 100,
     playerMaxHp: 100,
+    stats: null, // latest stats from server
   };
 
   let lastSaveAt = 0;
@@ -34,34 +35,111 @@
   }
 
   function tileToScreen(tx, ty) {
-    return {
-      x: (tx - ty) * (ISO_W / 2) + STATE.origin.x,
-      y: (tx + ty) * (ISO_H / 2) + STATE.origin.y
-    };
+    return { x: (tx-ty)*(ISO_W/2)+STATE.origin.x, y: (tx+ty)*(ISO_H/2)+STATE.origin.y };
   }
   function screenToTile(sx, sy) {
-    const x = sx - STATE.origin.x, y = sy - STATE.origin.y;
-    return { tx: (y/(ISO_H/2) + x/(ISO_W/2))/2, ty: (y/(ISO_H/2) - x/(ISO_W/2))/2 };
+    const x = sx-STATE.origin.x, y = sy-STATE.origin.y;
+    return { tx: (y/(ISO_H/2)+x/(ISO_W/2))/2, ty: (y/(ISO_H/2)-x/(ISO_W/2))/2 };
   }
   function clampTile(tx, ty) {
-    return { tx: Math.max(0, Math.min(STATE.map.w-1, tx)), ty: Math.max(0, Math.min(STATE.map.h-1, ty)) };
+    return { tx: Math.max(0,Math.min(STATE.map.w-1,tx)), ty: Math.max(0,Math.min(STATE.map.h-1,ty)) };
   }
   function getTile(x, y) {
     if (!STATE.map.tiles) return 0;
-    return STATE.map.tiles[y * STATE.map.w + x] ?? 0;
+    return STATE.map.tiles[y*STATE.map.w+x] ?? 0;
+  }
+
+  // ── Stat window update ──
+  const STAT_NAMES = [
+    { key: 'str', label: 'STR', tip: 'ATK, weight' },
+    { key: 'agi', label: 'AGI', tip: 'ASPD, Flee' },
+    { key: 'vit', label: 'VIT', tip: 'HP, DEF' },
+    { key: 'int', label: 'INT', tip: 'MATK, SP' },
+    { key: 'dex', label: 'DEX', tip: 'HIT, ranged' },
+    { key: 'luk', label: 'LUK', tip: 'Crit, luck' },
+  ];
+
+  function statCost(val) { return Math.floor(val / 10) + 2; }
+
+  function renderStatWindow(stats, net) {
+    if (!stats) return;
+    STATE.stats = stats;
+
+    document.getElementById('sw-level').textContent     = stats.level;
+    document.getElementById('stat-points-left').textContent = stats.statPoints;
+    document.getElementById('sw-exp').textContent       = stats.exp;
+    document.getElementById('sw-exp-next').textContent  = stats.expNext;
+    const expPct = Math.min(100, (stats.exp / stats.expNext) * 100);
+    document.getElementById('exp-bar-fill').style.width = expPct + '%';
+
+    // Base stat rows
+    const rows = document.getElementById('stat-rows');
+    rows.innerHTML = '';
+    for (const s of STAT_NAMES) {
+      const cost = statCost(stats[s.key]);
+      const canAfford = stats.statPoints >= cost;
+      const row = document.createElement('div');
+      row.className = 'stat-row';
+      row.title = s.tip;
+      row.innerHTML = `
+        <span class="stat-label">${s.label}</span>
+        <span class="stat-val">${stats[s.key]}</span>
+        <button class="stat-btn" data-stat="${s.key}" ${canAfford ? '' : 'disabled'}>+</button>
+        <span class="stat-cost">cost ${cost}</span>
+      `;
+      rows.appendChild(row);
+    }
+
+    // Wire up + buttons
+    rows.querySelectorAll('.stat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!net) return;
+        net.send({ t: 'ADD_STAT', stat: btn.dataset.stat });
+      });
+    });
+
+    // Derived stats
+    const derived = document.getElementById('derived-rows');
+    derived.innerHTML = '';
+    const derivedStats = [
+      ['ATK', stats.atk],
+      ['DEF', stats.def],
+      ['Max HP', stats.maxHp],
+      ['ASPD', stats.aspd + 'ms'],
+      ['HIT', stats.hit],
+      ['FLEE', stats.flee],
+      ['Crit', stats.critRate + '%'],
+      ['Weight', stats.weightLimit],
+    ];
+    for (const [label, val] of derivedStats) {
+      const row = document.createElement('div');
+      row.className = 'derived-row';
+      row.innerHTML = `<span>${label}</span><span>${val}</span>`;
+      derived.appendChild(row);
+    }
   }
 
   // ── Player ──
-  function upsertPlayer(scene, id, tx, ty, name) {
+  function upsertPlayer(scene, id, tx, ty, name, level) {
     let p = STATE.players.get(id);
     if (!p) {
       const base  = scene.add.ellipse(0, 0, 18, 10, 0x7dd3fc).setOrigin(0.5, 0.5);
       const body  = scene.add.rectangle(0, 0, 10, 16, 0x7dd3fc).setOrigin(0.5, 1);
-      const label = scene.add.text(0, -24, name||id, { fontSize:'11px', fontFamily:'system-ui,sans-serif', color:'#e2e8f0', stroke:'#0b1020', strokeThickness:3, resolution:2 }).setOrigin(0.5,1);
-      const container = scene.add.container(0, 0, [body, base, label]);
-      p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, body };
+      const label = scene.add.text(0, -24, name||id, {
+        fontSize:'11px', fontFamily:'system-ui,sans-serif',
+        color:'#e2e8f0', stroke:'#0b1020', strokeThickness:3, resolution:2
+      }).setOrigin(0.5,1);
+      const lvlTag = scene.add.text(0, -36, `Lv${level||1}`, {
+        fontSize:'9px', fontFamily:'system-ui,sans-serif',
+        color:'#a3e635', stroke:'#0b1020', strokeThickness:2, resolution:2
+      }).setOrigin(0.5,1);
+      const container = scene.add.container(0, 0, [body, base, label, lvlTag]);
+      p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, lvlTag, body };
       STATE.players.set(id, p);
-    } else if (name && p.label) p.label.setText(name);
+    } else {
+      if (name && p.label) p.label.setText(name);
+      if (level && p.lvlTag) p.lvlTag.setText(`Lv${level}`);
+    }
     p.tx = tx; p.ty = ty;
   }
   function removePlayer(id) {
@@ -83,24 +161,23 @@
     let n = STATE.npcs.get(id);
     const vis = NPC_VISUALS[kind] || NPC_VISUALS.poring;
     const s = vis.scale || 1;
-
     if (!n) {
-      const base  = scene.add.ellipse(0, 0, 22*s, 14*s, vis.baseColor).setOrigin(0.5, 0.5);
-      const body  = scene.add.ellipse(0, -8*s, 16*s, 16*s, vis.bodyColor).setOrigin(0.5, 0.5);
+      const base  = scene.add.ellipse(0, 0, 22*s, 14*s, vis.baseColor).setOrigin(0.5,0.5);
+      const body  = scene.add.ellipse(0, -8*s, 16*s, 16*s, vis.bodyColor).setOrigin(0.5,0.5);
       const eyeL  = scene.add.circle(-4*s, -10*s, 2*s, 0xffffff);
       const eyeR  = scene.add.circle( 4*s, -10*s, 2*s, 0xffffff);
       const pupL  = scene.add.circle(-4*s, -10*s, 1*s, 0x222222);
       const pupR  = scene.add.circle( 4*s, -10*s, 1*s, 0x222222);
-      const label = scene.add.text(0, -26*s, name||'Poring', { fontSize:'10px', fontFamily:'system-ui,sans-serif', color:vis.labelColor, stroke:'#0b1020', strokeThickness:3, resolution:2 }).setOrigin(0.5,1);
-      const hpBg   = scene.add.rectangle(0, -38*s, 30, 4, 0x333333).setOrigin(0.5, 0.5);
-      const hpFill = scene.add.rectangle(-15, -38*s, 30, 4, 0xff4444).setOrigin(0, 0.5);
-
+      const label = scene.add.text(0, -26*s, name||'Poring', {
+        fontSize:'10px', fontFamily:'system-ui,sans-serif',
+        color:vis.labelColor, stroke:'#0b1020', strokeThickness:3, resolution:2
+      }).setOrigin(0.5,1);
+      const hpBg   = scene.add.rectangle(0, -38*s, 30, 4, 0x333333).setOrigin(0.5,0.5);
+      const hpFill = scene.add.rectangle(-15, -38*s, 30, 4, 0xff4444).setOrigin(0,0.5);
       const container = scene.add.container(0, 0, [base, body, eyeL, eyeR, pupL, pupR, hpBg, hpFill, label]);
       container.setSize(30, 30);
       container.setInteractive();
-
       container.on('pointerdown', () => {
-        // Set flag BEFORE map pointerdown fires
         STATE.clickConsumed = true;
         STATE.attackTarget = id;
         scene.net.send({ t: 'ATTACK_NPC', npcId: id });
@@ -108,20 +185,16 @@
       });
       container.on('pointerover', () => { scene.input.setDefaultCursor('crosshair'); });
       container.on('pointerout',  () => { scene.input.setDefaultCursor('default'); });
-
-      n = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, hpFill, body, kind, hp: hp||50, maxHp: maxHp||50 };
+      n = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, hpFill, body, kind, hp:hp||50, maxHp:maxHp||50 };
       STATE.npcs.set(id, n);
     }
-
     if (hp !== undefined) {
       n.hp = hp; n.maxHp = maxHp || n.maxHp;
-      const pct = Math.max(0, n.hp / n.maxHp);
-      n.hpFill.width = 30 * pct;
-      n.hpFill.x = -15;
+      const pct = Math.max(0, n.hp/n.maxHp);
+      n.hpFill.width = 30*pct; n.hpFill.x = -15;
     }
     n.tx = tx; n.ty = ty;
   }
-
   function removeNPC(id) {
     const n = STATE.npcs.get(id);
     if (!n) return;
@@ -129,31 +202,33 @@
     STATE.npcs.delete(id);
     if (STATE.attackTarget === id) STATE.attackTarget = null;
   }
-
   function setDepth(e, isNpc) {
-    e.sprite.setDepth((e.ty + e.tx) * 10 + (isNpc ? 4 : 5));
+    e.sprite.setDepth((e.ty+e.tx)*10+(isNpc?4:5));
   }
 
-  function spawnDmgNumber(scene, worldX, worldY, dmg, color) {
-    const txt = scene.add.text(worldX, worldY - 20, `-${dmg}`, {
-      fontSize: '14px', fontFamily: 'system-ui,sans-serif',
-      color: color || '#ff4444', stroke: '#000', strokeThickness: 3,
-      fontStyle: 'bold', resolution: 2
-    }).setOrigin(0.5, 1).setDepth(9999);
+  function spawnDmgNumber(scene, worldX, worldY, dmg, color, isCrit) {
+    const size = isCrit ? '18px' : '14px';
+    const txt = scene.add.text(worldX, worldY-20,
+      isCrit ? `★${dmg}` : `-${dmg}`, {
+      fontSize: size, fontFamily: 'system-ui,sans-serif',
+      color: color||'#ff4444', stroke:'#000', strokeThickness:3,
+      fontStyle:'bold', resolution:2
+    }).setOrigin(0.5,1).setDepth(9999);
     scene.tweens.add({
-      targets: txt, y: worldY - 55, alpha: 0, duration: 900, ease: 'Power2',
-      onComplete: () => txt.destroy()
+      targets: txt, y: worldY-60, alpha:0, duration: isCrit?1100:900,
+      ease:'Power2', onComplete: ()=>txt.destroy()
     });
   }
 
-  function updatePlayerHpBar() {
+  function updatePlayerHpBar(hp, maxHp) {
+    if (hp !== undefined) { STATE.playerHp = hp; STATE.playerMaxHp = maxHp; }
     const bar = document.getElementById('player-hp-fill');
     const txt = document.getElementById('player-hp-text');
     if (!bar || !txt) return;
-    const pct = Math.max(0, STATE.playerHp / STATE.playerMaxHp) * 100;
-    bar.style.width = pct + '%';
+    const pct = Math.max(0, STATE.playerHp/STATE.playerMaxHp)*100;
+    bar.style.width = pct+'%';
     txt.textContent = `HP: ${STATE.playerHp} / ${STATE.playerMaxHp}`;
-    bar.style.background = pct > 50 ? '#4ade80' : pct > 25 ? '#facc15' : '#ef4444';
+    bar.style.background = pct>50?'#4ade80':pct>25?'#facc15':'#ef4444';
   }
 
   class MainScene extends Phaser.Scene {
@@ -164,14 +239,14 @@
       this.scale.resize(window.innerWidth, window.innerHeight);
       window.addEventListener('resize', () => {
         this.scale.resize(window.innerWidth, window.innerHeight);
-        this.recomputeOrigin();
-        this.drawTileMap();
+        this.recomputeOrigin(); this.drawTileMap();
       });
 
       this.tileGraphics = this.add.graphics();
       this.recomputeOrigin();
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
 
+      // Inject HP bar
       if (!document.getElementById('player-hp-bar')) {
         const bar = document.createElement('div');
         bar.id = 'player-hp-bar';
@@ -181,49 +256,37 @@
       }
 
       this.input.on('pointerdown', (pointer) => {
-        // If an NPC was clicked this same event, ignore map click
-        if (STATE.clickConsumed) {
-          STATE.clickConsumed = false;
-          return;
-        }
-
-        // Clicking empty map cancels attack
+        if (STATE.clickConsumed) { STATE.clickConsumed = false; return; }
         if (STATE.attackTarget) {
           STATE.attackTarget = null;
           this.net.send({ t: 'CANCEL_ATTACK' });
           for (const n of STATE.npcs.values()) n.body.setStrokeStyle(0);
         }
-
         const cam = this.cameras.main;
-        const worldX = pointer.x + cam.scrollX;
-        const worldY = pointer.y + cam.scrollY;
+        const worldX = pointer.x+cam.scrollX, worldY = pointer.y+cam.scrollY;
         const { tx, ty } = screenToTile(worldX, worldY);
         const c = clampTile(Math.floor(tx), Math.floor(ty));
-        this.net.send({ t: 'MOVE_TO', seq: Date.now() % 1000000, x: c.tx, y: c.ty });
+        this.net.send({ t: 'MOVE_TO', seq: Date.now()%1000000, x: c.tx, y: c.ty });
       });
     }
 
     recomputeOrigin() {
-      const mapHpx = (STATE.map.w + STATE.map.h) * (ISO_H / 2);
-      STATE.origin.x = Math.floor(window.innerWidth / 2);
-      STATE.origin.y = Math.floor((window.innerHeight - mapHpx) / 2) + 60;
+      const mapHpx = (STATE.map.w+STATE.map.h)*(ISO_H/2);
+      STATE.origin.x = Math.floor(window.innerWidth/2);
+      STATE.origin.y = Math.floor((window.innerHeight-mapHpx)/2)+60;
     }
 
     drawTileMap() {
       const g = this.tileGraphics;
       g.clear();
-      for (let y = 0; y < STATE.map.h; y++) {
-        for (let x = 0; x < STATE.map.w; x++) {
-          const colors = TILE_COLORS[getTile(x,y)] || TILE_COLORS[0];
-          const c = tileToScreen(x, y);
-          const top    = { x: c.x,           y: c.y - ISO_H/2 };
-          const right  = { x: c.x + ISO_W/2, y: c.y };
-          const bottom = { x: c.x,           y: c.y + ISO_H/2 };
-          const left   = { x: c.x - ISO_W/2, y: c.y };
-          g.fillStyle(colors.fill, 1);
-          g.fillPoints([top, right, bottom, left], true);
-          g.lineStyle(1, colors.stroke, 0.6);
-          g.strokePoints([top, right, bottom, left, top], false);
+      for (let y=0; y<STATE.map.h; y++) {
+        for (let x=0; x<STATE.map.w; x++) {
+          const colors = TILE_COLORS[getTile(x,y)]||TILE_COLORS[0];
+          const c = tileToScreen(x,y);
+          const top={x:c.x,y:c.y-ISO_H/2}, right={x:c.x+ISO_W/2,y:c.y};
+          const bottom={x:c.x,y:c.y+ISO_H/2}, left={x:c.x-ISO_W/2,y:c.y};
+          g.fillStyle(colors.fill,1); g.fillPoints([top,right,bottom,left],true);
+          g.lineStyle(1,colors.stroke,0.6); g.strokePoints([top,right,bottom,left,top],false);
         }
       }
     }
@@ -240,12 +303,11 @@
         STATE.you = msg.you;
         for (const id of [...STATE.players.keys()]) removePlayer(id);
         for (const id of [...STATE.npcs.keys()]) removeNPC(id);
-        for (const pl of msg.players) upsertPlayer(this, pl.id, pl.x, pl.y, pl.name);
-        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p, false); }
-        if (Array.isArray(msg.npcs))
-          for (const n of msg.npcs) upsertNPC(this, n.id, n.x, n.y, n.name, n.kind, n.hp, n.maxHp);
-        for (const n of STATE.npcs.values()) setDepth(n, true);
-        const me = msg.players.find(pl => pl.id === STATE.you);
+        for (const pl of msg.players) upsertPlayer(this, pl.id, pl.x, pl.y, pl.name, pl.level);
+        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p,false); }
+        if (Array.isArray(msg.npcs)) for (const n of msg.npcs) upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
+        for (const n of STATE.npcs.values()) setDepth(n,true);
+        const me = msg.players.find(pl=>pl.id===STATE.you);
         if (me) maybeSavePos(me.x, me.y);
         return;
       }
@@ -254,14 +316,14 @@
         if (Array.isArray(msg.rm)) for (const id of msg.rm) removePlayer(id);
         if (Array.isArray(msg.up)) {
           for (const u of msg.up) {
-            upsertPlayer(this, u.id, u.x, u.y, u.name);
+            upsertPlayer(this, u.id, u.x, u.y, u.name, u.level);
             if (u.id === STATE.you) maybeSavePos(u.x, u.y);
           }
         }
-        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p, false); }
+        for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p,false); }
         if (Array.isArray(msg.npcUp)) {
-          for (const n of msg.npcUp) upsertNPC(this, n.id, n.x, n.y, n.name, n.kind, n.hp, n.maxHp);
-          for (const n of STATE.npcs.values()) setDepth(n, true);
+          for (const n of msg.npcUp) upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
+          for (const n of STATE.npcs.values()) setDepth(n,true);
         }
         return;
       }
@@ -270,11 +332,12 @@
         const n = STATE.npcs.get(msg.npcId);
         if (!n) return;
         n.hp = msg.hp;
-        const pct = Math.max(0, n.hp / n.maxHp);
-        n.hpFill.width = 30 * pct;
+        const pct = Math.max(0,n.hp/n.maxHp);
+        n.hpFill.width = 30*pct;
         n.body.setFillStyle(0xff0000);
-        setTimeout(() => { if (n.body) n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor || 0xff6eb4); }, 120);
-        spawnDmgNumber(this, n.sprite.x, n.sprite.y, msg.dmg);
+        setTimeout(()=>{ if(n.body) n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4); },120);
+        const col = msg.isCrit ? '#ffff00' : '#ff4444';
+        spawnDmgNumber(this, n.sprite.x, n.sprite.y, msg.dmg, col, msg.isCrit);
         return;
       }
 
@@ -282,56 +345,93 @@
         const n = STATE.npcs.get(msg.npcId);
         if (!n) return;
         n.body.setFillStyle(0xffffff);
-        this.time.delayedCall(200, () => removeNPC(msg.npcId));
+        this.time.delayedCall(200, ()=>removeNPC(msg.npcId));
         return;
       }
 
       if (msg.t === 'NPC_SPAWN') {
-        upsertNPC(this, msg.id, msg.x, msg.y, msg.name, msg.kind, msg.hp, msg.maxHp);
+        upsertNPC(this,msg.id,msg.x,msg.y,msg.name,msg.kind,msg.hp,msg.maxHp);
         const n = STATE.npcs.get(msg.id);
-        if (n) setDepth(n, true);
+        if (n) setDepth(n,true);
         return;
       }
 
       if (msg.t === 'PLAYER_HIT') {
-        STATE.playerHp = Math.max(0, STATE.playerHp - msg.dmg);
-        updatePlayerHpBar();
+        updatePlayerHpBar(msg.hp, msg.maxHp);
         const me = STATE.players.get(STATE.you);
         if (me) {
           me.sprite.list[0].setFillStyle(0xff4444);
           me.sprite.list[1].setFillStyle(0xff4444);
-          setTimeout(() => setPlayerVisual(me), 150);
-          spawnDmgNumber(this, me.sprite.x, me.sprite.y, msg.dmg, '#ff9900');
+          setTimeout(()=>setPlayerVisual(me),150);
+          spawnDmgNumber(this, me.sprite.x, me.sprite.y, msg.dmg, '#ff9900', false);
         }
+        return;
+      }
+
+      // ── Stats update from server ──
+      if (msg.t === 'STATS_UPDATE') {
+        renderStatWindow(msg.stats, this.net);
+        if (msg.hp !== undefined) updatePlayerHpBar(msg.hp, msg.maxHp);
+        if (window.LERMA_SAVE_STATS) window.LERMA_SAVE_STATS(msg.stats);
+        return;
+      }
+
+      // ── EXP gain notification ──
+      if (msg.t === 'EXP_GAIN') {
+        const me = STATE.players.get(STATE.you);
+        if (me) {
+          const txt = this.add.text(me.sprite.x, me.sprite.y-50,
+            `+${msg.amount} EXP`, {
+            fontSize:'11px', fontFamily:'system-ui,sans-serif',
+            color:'#a3e635', stroke:'#000', strokeThickness:2, resolution:2
+          }).setOrigin(0.5,1).setDepth(9999);
+          this.tweens.add({ targets:txt, y:me.sprite.y-80, alpha:0, duration:1200, ease:'Power2', onComplete:()=>txt.destroy() });
+        }
+        return;
+      }
+
+      // ── Level up broadcast ──
+      if (msg.t === 'PLAYER_LEVEL_UP') {
+        if (msg.playerId === STATE.you) {
+          // Big level up text
+          const lvlTxt = this.add.text(
+            window.innerWidth/2, window.innerHeight/2,
+            `⭐ LEVEL UP! ⭐\nNow Level ${msg.level}`, {
+            fontSize:'28px', fontFamily:'system-ui,sans-serif',
+            color:'#facc15', stroke:'#000', strokeThickness:4,
+            align:'center', resolution:2
+          }).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
+          this.tweens.add({ targets:lvlTxt, y:window.innerHeight/2-80, alpha:0, duration:2500, ease:'Power2', onComplete:()=>lvlTxt.destroy() });
+        }
+        // Update level tag on the player's sprite
+        const p = STATE.players.get(msg.playerId);
+        if (p && p.lvlTag) p.lvlTag.setText(`Lv${msg.level}`);
         return;
       }
     }
 
     update(_, dtMs) {
-      const dt = dtMs / 1000;
+      const dt = dtMs/1000;
       const FOLLOW = 16;
-
       for (const p of STATE.players.values()) {
-        p.rx += (p.tx - p.rx) * Math.min(1, FOLLOW * dt);
-        p.ry += (p.ty - p.ry) * Math.min(1, FOLLOW * dt);
-        const s = tileToScreen(p.rx, p.ry);
-        p.sprite.x = s.x; p.sprite.y = s.y - 6;
-        setDepth(p, false);
+        p.rx += (p.tx-p.rx)*Math.min(1,FOLLOW*dt);
+        p.ry += (p.ty-p.ry)*Math.min(1,FOLLOW*dt);
+        const s = tileToScreen(p.rx,p.ry);
+        p.sprite.x=s.x; p.sprite.y=s.y-6;
+        setDepth(p,false);
       }
-
       for (const n of STATE.npcs.values()) {
-        n.rx += (n.tx - n.rx) * Math.min(1, FOLLOW * 0.5 * dt);
-        n.ry += (n.ty - n.ry) * Math.min(1, FOLLOW * 0.5 * dt);
-        const s = tileToScreen(n.rx, n.ry);
-        n.sprite.x = s.x; n.sprite.y = s.y - 4;
-        setDepth(n, true);
+        n.rx += (n.tx-n.rx)*Math.min(1,FOLLOW*0.5*dt);
+        n.ry += (n.ty-n.ry)*Math.min(1,FOLLOW*0.5*dt);
+        const s = tileToScreen(n.rx,n.ry);
+        n.sprite.x=s.x; n.sprite.y=s.y-4;
+        setDepth(n,true);
       }
-
       const me = STATE.players.get(STATE.you);
       if (me) {
-        const s = tileToScreen(me.rx, me.ry);
-        this.cameras.main.scrollX += (s.x - window.innerWidth/2  - this.cameras.main.scrollX) * 0.1;
-        this.cameras.main.scrollY += (s.y - window.innerHeight/2 - this.cameras.main.scrollY) * 0.1;
+        const s = tileToScreen(me.rx,me.ry);
+        this.cameras.main.scrollX += (s.x-window.innerWidth/2-this.cameras.main.scrollX)*0.1;
+        this.cameras.main.scrollY += (s.y-window.innerHeight/2-this.cameras.main.scrollY)*0.1;
       }
     }
   }

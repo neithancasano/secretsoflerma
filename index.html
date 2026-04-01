@@ -16,37 +16,23 @@
         font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
         color: #cbd5e1;
       }
-      #login-screen h1 {
-        font-size: 2rem; font-weight: 800;
-        color: #a3e635; letter-spacing: 0.05em;
-        margin-bottom: 0.25rem;
-      }
-      #login-screen p {
-        font-size: 0.9rem; color: #64748b;
-        margin-bottom: 2rem;
-      }
+      #login-screen h1 { font-size: 2rem; font-weight: 800; color: #a3e635; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+      #login-screen p  { font-size: 0.9rem; color: #64748b; margin-bottom: 2rem; }
       #btn-google {
         display: flex; align-items: center; gap: 0.75rem;
         background: #fff; color: #1e293b;
-        border: none; border-radius: 8px;
-        padding: 0.75rem 1.5rem;
-        font-size: 1rem; font-weight: 600;
-        cursor: pointer; transition: opacity 0.2s;
+        border: none; border-radius: 8px; padding: 0.75rem 1.5rem;
+        font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s;
       }
       #btn-google:hover { opacity: 0.85; }
       #btn-google img { width: 20px; height: 20px; }
-      #login-error {
-        margin-top: 1rem; font-size: 0.85rem;
-        color: #f87171; display: none;
-      }
+      #login-error { margin-top: 1rem; font-size: 0.85rem; color: #f87171; display: none; }
 
       /* ── In-game UI ── */
       #ui {
         position: fixed; left: 12px; top: 10px; z-index: 5;
-        color: #cbd5e1;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        font-size: 14px; opacity: 0.95;
-        display: none;
+        color: #cbd5e1; font-family: system-ui, sans-serif;
+        font-size: 14px; opacity: 0.95; display: none;
       }
       #ui b { color: #e2e8f0; }
       #btn-logout {
@@ -56,11 +42,51 @@
         font-size: 12px; cursor: pointer;
       }
       #btn-logout:hover { background: #334155; }
+      #btn-stats {
+        margin-top: 4px; padding: 4px 10px;
+        background: #1e293b; color: #a3e635;
+        border: 1px solid #334155; border-radius: 6px;
+        font-size: 12px; cursor: pointer; display: block;
+      }
+      #btn-stats:hover { background: #334155; }
+
+      /* ── Stat Window ── */
+      #stat-window {
+        position: fixed; top: 60px; left: 12px; z-index: 20;
+        background: #0f172a; border: 1px solid #334155;
+        border-radius: 8px; padding: 12px 16px; width: 260px;
+        font-family: system-ui, sans-serif; font-size: 12px;
+        color: #cbd5e1; display: none;
+      }
+      #stat-window h3 {
+        margin: 0 0 8px 0; font-size: 13px;
+        color: #a3e635; border-bottom: 1px solid #1e293b; padding-bottom: 6px;
+      }
+      .stat-row {
+        display: flex; align-items: center;
+        justify-content: space-between; margin: 4px 0;
+      }
+      .stat-label { color: #94a3b8; width: 36px; }
+      .stat-val   { color: #e2e8f0; font-weight: 600; width: 28px; text-align: center; }
+      .stat-btn {
+        background: #1e40af; color: #fff; border: none;
+        border-radius: 4px; width: 20px; height: 20px;
+        font-size: 14px; cursor: pointer; line-height: 1;
+      }
+      .stat-btn:hover { background: #2563eb; }
+      .stat-btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
+      .stat-cost { color: #64748b; font-size: 10px; }
+      .derived-row { display: flex; justify-content: space-between; margin: 2px 0; color: #64748b; }
+      .derived-row span:last-child { color: #94a3b8; }
+      #stat-points-left { color: #facc15; font-weight: 700; }
+      .exp-bar-wrap { margin-top: 8px; }
+      .exp-bar-bg { background: #1e293b; border-radius: 3px; height: 6px; overflow: hidden; margin-top: 3px; }
+      #exp-bar-fill { height: 100%; background: #a3e635; border-radius: 3px; transition: width 0.3s; }
     </style>
   </head>
   <body>
 
-    <!-- ── Login Screen ── -->
+    <!-- Login -->
     <div id="login-screen">
       <h1>🪨 Secrets of Lerma</h1>
       <p>A living world built from the stories of Naga City</p>
@@ -71,11 +97,29 @@
       <div id="login-error">Login failed. Please try again.</div>
     </div>
 
-    <!-- ── In-game UI ── -->
+    <!-- In-game UI -->
     <div id="ui">
       <b>Secrets of Lerma</b><br />
       <span id="ui-name"></span><br />
+      <button id="btn-stats">📊 Stats (S)</button>
       <button id="btn-logout">Log out</button>
+    </div>
+
+    <!-- Stat Window -->
+    <div id="stat-window">
+      <h3>📊 Character Stats — <span id="sw-name"></span></h3>
+      <div style="margin-bottom:6px;color:#94a3b8">
+        Level <span id="sw-level" style="color:#a3e635;font-weight:700">1</span>
+        &nbsp;&nbsp; Points: <span id="stat-points-left">0</span>
+      </div>
+      <div class="exp-bar-wrap">
+        <span style="color:#64748b;font-size:10px">EXP: <span id="sw-exp">0</span> / <span id="sw-exp-next">10</span></span>
+        <div class="exp-bar-bg"><div id="exp-bar-fill" style="width:0%"></div></div>
+      </div>
+      <div style="margin: 10px 0 4px; color:#475569; font-size:10px; text-transform:uppercase; letter-spacing:0.05em">Base Stats</div>
+      <div id="stat-rows"></div>
+      <div style="margin: 10px 0 4px; color:#475569; font-size:10px; text-transform:uppercase; letter-spacing:0.05em">Derived Stats</div>
+      <div id="derived-rows"></div>
     </div>
 
     <!-- Phaser -->
@@ -83,13 +127,12 @@
 
     <!-- Firebase -->
     <script type="module">
-      import { initializeApp }     from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+      import { initializeApp }  from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
       import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-                                    from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+                                 from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
       import { getFirestore, doc, getDoc, setDoc, serverTimestamp }
-                                    from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+                                 from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
-      // 🔑 Firebase config
       const firebaseConfig = {
         apiKey:            "AIzaSyDVq6qM2duD5t0DpqOXjHJKJhwkO_qrhng",
         authDomain:        "secretsoflerma.firebaseapp.com",
@@ -109,51 +152,72 @@
       const uiName      = document.getElementById("ui-name");
       const btnGoogle   = document.getElementById("btn-google");
       const btnLogout   = document.getElementById("btn-logout");
+      const btnStats    = document.getElementById("btn-stats");
+      const statWindow  = document.getElementById("stat-window");
       const loginError  = document.getElementById("login-error");
 
       const V = Date.now();
 
-      // ── Save position to Firestore (called from main.js) ──
+      // Toggle stat window
+      btnStats.addEventListener("click", () => {
+        statWindow.style.display = statWindow.style.display === "none" ? "block" : "none";
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "s" || e.key === "S") {
+          statWindow.style.display = statWindow.style.display === "none" ? "block" : "none";
+        }
+      });
+
+      // Save position
       window.LERMA_SAVE_POS = async (x, y) => {
         const user = auth.currentUser;
         if (!user) return;
         try {
           await setDoc(doc(db, "players", user.uid), {
             displayName: user.displayName || user.email,
-            x, y,
-            lastSeen: serverTimestamp()
+            x, y, lastSeen: serverTimestamp()
           }, { merge: true });
-        } catch (e) {
-          console.warn("[LERMA] save pos failed", e);
-        }
+        } catch (e) { console.warn("[LERMA] save pos failed", e); }
       };
 
-      // ── Auth state listener ──
+      // Save stats (called from main.js when server sends STATS_UPDATE)
+      window.LERMA_SAVE_STATS = async (stats) => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+          await setDoc(doc(db, "players", user.uid), {
+            stats: {
+              level: stats.level, exp: stats.exp, statPoints: stats.statPoints,
+              str: stats.str, agi: stats.agi, vit: stats.vit,
+              int: stats.int, dex: stats.dex, luk: stats.luk,
+            }
+          }, { merge: true });
+        } catch (e) { console.warn("[LERMA] save stats failed", e); }
+      };
+
       onAuthStateChanged(auth, async (user) => {
         if (user) {
           loginScreen.style.display = "none";
           gameUI.style.display      = "block";
           uiName.textContent        = user.displayName || user.email;
+          document.getElementById("sw-name").textContent = user.displayName || user.email;
 
-          // Load saved position from Firestore
-          let savedX = null, savedY = null;
+          let savedX = null, savedY = null, savedStats = null;
           try {
             const snap = await getDoc(doc(db, "players", user.uid));
             if (snap.exists()) {
-              savedX = snap.data().x ?? null;
-              savedY = snap.data().y ?? null;
+              const data = snap.data();
+              savedX     = data.x ?? null;
+              savedY     = data.y ?? null;
+              savedStats = data.stats ?? null;
             }
-          } catch (e) {
-            console.warn("[LERMA] load pos failed", e);
-          }
+          } catch (e) { console.warn("[LERMA] load failed", e); }
 
-          // Set identity + saved position BEFORE loading game scripts
           window.LERMA_USER = {
             uid:         user.uid,
             displayName: user.displayName || user.email,
             photoURL:    user.photoURL,
-            savedX,
-            savedY
+            savedX, savedY, savedStats
           };
 
           if (!window.LERMA_GAME_STARTED) {
@@ -173,18 +237,10 @@
         }
       });
 
-      // ── Google Sign-in ──
       btnGoogle.addEventListener("click", async () => {
-        try {
-          loginError.style.display = "none";
-          await signInWithPopup(auth, provider);
-        } catch (e) {
-          console.error(e);
-          loginError.style.display = "block";
-        }
+        try { loginError.style.display = "none"; await signInWithPopup(auth, provider); }
+        catch (e) { console.error(e); loginError.style.display = "block"; }
       });
-
-      // ── Logout ──
       btnLogout.addEventListener("click", () => signOut(auth));
     </script>
 
