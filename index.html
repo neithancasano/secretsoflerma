@@ -62,10 +62,7 @@
         margin: 0 0 8px 0; font-size: 13px;
         color: #a3e635; border-bottom: 1px solid #1e293b; padding-bottom: 6px;
       }
-      .stat-row {
-        display: flex; align-items: center;
-        justify-content: space-between; margin: 4px 0;
-      }
+      .stat-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
       .stat-label { color: #94a3b8; width: 36px; }
       .stat-val   { color: #e2e8f0; font-weight: 600; width: 28px; text-align: center; }
       .stat-btn {
@@ -82,6 +79,7 @@
       .exp-bar-wrap { margin-top: 8px; }
       .exp-bar-bg { background: #1e293b; border-radius: 3px; height: 6px; overflow: hidden; margin-top: 3px; }
       #exp-bar-fill { height: 100%; background: #a3e635; border-radius: 3px; transition: width 0.3s; }
+      #save-indicator { font-size: 10px; color: #4ade80; margin-top: 6px; opacity: 0; transition: opacity 0.3s; }
     </style>
   </head>
   <body>
@@ -120,6 +118,7 @@
       <div id="stat-rows"></div>
       <div style="margin: 10px 0 4px; color:#475569; font-size:10px; text-transform:uppercase; letter-spacing:0.05em">Derived Stats</div>
       <div id="derived-rows"></div>
+      <div id="save-indicator">✓ Saved</div>
     </div>
 
     <!-- Phaser -->
@@ -155,6 +154,7 @@
       const btnStats    = document.getElementById("btn-stats");
       const statWindow  = document.getElementById("stat-window");
       const loginError  = document.getElementById("login-error");
+      const saveIndicator = document.getElementById("save-indicator");
 
       const V = Date.now();
 
@@ -168,7 +168,7 @@
         }
       });
 
-      // Save position
+      // ── Save position ──
       window.LERMA_SAVE_POS = async (x, y) => {
         const user = auth.currentUser;
         if (!user) return;
@@ -180,10 +180,30 @@
         } catch (e) { console.warn("[LERMA] save pos failed", e); }
       };
 
-      // Save stats (called from main.js when server sends STATS_UPDATE)
+      // ── Save stats — throttled to max once every 5 seconds ──
+      let lastStatSaveAt = 0;
+      let pendingStatSave = null;
+
       window.LERMA_SAVE_STATS = async (stats) => {
         const user = auth.currentUser;
-        if (!user) return;
+        if (!user || !stats) return;
+
+        // Always store latest stats in memory for the periodic save
+        window._latestStats = stats;
+
+        const now = Date.now();
+        if (now - lastStatSaveAt < 5000) {
+          // Schedule a save for later if not already scheduled
+          if (!pendingStatSave) {
+            pendingStatSave = setTimeout(() => {
+              pendingStatSave = null;
+              window.LERMA_SAVE_STATS(window._latestStats);
+            }, 5000 - (now - lastStatSaveAt));
+          }
+          return;
+        }
+
+        lastStatSaveAt = now;
         try {
           await setDoc(doc(db, "players", user.uid), {
             stats: {
@@ -192,8 +212,37 @@
               int: stats.int, dex: stats.dex, luk: stats.luk,
             }
           }, { merge: true });
+
+          // Flash the save indicator
+          saveIndicator.style.opacity = '1';
+          setTimeout(() => { saveIndicator.style.opacity = '0'; }, 1500);
+          console.log("[LERMA] Stats saved to Firestore");
         } catch (e) { console.warn("[LERMA] save stats failed", e); }
       };
+
+      // ── Periodic auto-save every 30 seconds ──
+      setInterval(() => {
+        if (window._latestStats) window.LERMA_SAVE_STATS(window._latestStats);
+      }, 30000);
+
+      // ── Save before page unload ──
+      window.addEventListener("beforeunload", () => {
+        const user = auth.currentUser;
+        if (!user || !window._latestStats) return;
+        const s = window._latestStats;
+        // Use sendBeacon for reliable save on page close
+        const payload = JSON.stringify({
+          stats: {
+            level: s.level, exp: s.exp, statPoints: s.statPoints,
+            str: s.str, agi: s.agi, vit: s.vit,
+            int: s.int, dex: s.dex, luk: s.luk,
+          }
+        });
+        // Best effort sync save
+        try {
+          setDoc(doc(db, "players", user.uid), JSON.parse(payload), { merge: true });
+        } catch(e) {}
+      });
 
       onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -210,6 +259,7 @@
               savedX     = data.x ?? null;
               savedY     = data.y ?? null;
               savedStats = data.stats ?? null;
+              console.log("[LERMA] Loaded stats from Firestore:", savedStats);
             }
           } catch (e) { console.warn("[LERMA] load failed", e); }
 
