@@ -20,6 +20,7 @@
     npcs: new Map(),
     origin: { x: 0, y: 0 },
     attackTarget: null,
+    clickConsumed: false, // flag: NPC was clicked, ignore map click this frame
     playerHp: 100,
     playerMaxHp: 100,
   };
@@ -98,8 +99,9 @@
       container.setSize(30, 30);
       container.setInteractive();
 
-      container.on('pointerdown', (ptr) => {
-        ptr.event.stopPropagation();
+      container.on('pointerdown', () => {
+        // Set flag BEFORE map pointerdown fires
+        STATE.clickConsumed = true;
         STATE.attackTarget = id;
         scene.net.send({ t: 'ATTACK_NPC', npcId: id });
         body.setStrokeStyle(2, 0xffff00);
@@ -144,7 +146,6 @@
     });
   }
 
-  // Update the player HP bar in the UI
   function updatePlayerHpBar() {
     const bar = document.getElementById('player-hp-fill');
     const txt = document.getElementById('player-hp-text');
@@ -171,7 +172,6 @@
       this.recomputeOrigin();
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
 
-      // Inject HP bar into page
       if (!document.getElementById('player-hp-bar')) {
         const bar = document.createElement('div');
         bar.id = 'player-hp-bar';
@@ -181,12 +181,19 @@
       }
 
       this.input.on('pointerdown', (pointer) => {
-        if (pointer.event.defaultPrevented) return;
+        // If an NPC was clicked this same event, ignore map click
+        if (STATE.clickConsumed) {
+          STATE.clickConsumed = false;
+          return;
+        }
+
+        // Clicking empty map cancels attack
         if (STATE.attackTarget) {
           STATE.attackTarget = null;
           this.net.send({ t: 'CANCEL_ATTACK' });
           for (const n of STATE.npcs.values()) n.body.setStrokeStyle(0);
         }
+
         const cam = this.cameras.main;
         const worldX = pointer.x + cam.scrollX;
         const worldY = pointer.y + cam.scrollY;
@@ -286,19 +293,16 @@
         return;
       }
 
-      // ── Poring bites YOU ──
       if (msg.t === 'PLAYER_HIT') {
         STATE.playerHp = Math.max(0, STATE.playerHp - msg.dmg);
         updatePlayerHpBar();
-        // Flash your own sprite red
         const me = STATE.players.get(STATE.you);
         if (me) {
-          me.sprite.list[0].setFillStyle(0xff4444); // body
-          me.sprite.list[1].setFillStyle(0xff4444); // base
+          me.sprite.list[0].setFillStyle(0xff4444);
+          me.sprite.list[1].setFillStyle(0xff4444);
           setTimeout(() => setPlayerVisual(me), 150);
+          spawnDmgNumber(this, me.sprite.x, me.sprite.y, msg.dmg, '#ff9900');
         }
-        // Damage number in orange above your character
-        if (me) spawnDmgNumber(this, me.sprite.x, me.sprite.y, msg.dmg, '#ff9900');
         return;
       }
     }
