@@ -83,9 +83,11 @@
 
     <!-- Firebase -->
     <script type="module">
-      import { initializeApp }        from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+      import { initializeApp }     from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
       import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-                                       from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+                                    from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+      import { getFirestore, doc, getDoc, setDoc, serverTimestamp }
+                                    from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
       // 🔑 Firebase config
       const firebaseConfig = {
@@ -99,6 +101,7 @@
 
       const app      = initializeApp(firebaseConfig);
       const auth     = getAuth(app);
+      const db       = getFirestore(app);
       const provider = new GoogleAuthProvider();
 
       const loginScreen = document.getElementById("login-screen");
@@ -108,26 +111,53 @@
       const btnLogout   = document.getElementById("btn-logout");
       const loginError  = document.getElementById("login-error");
 
-      // Cache buster — bump this when you want browsers to reload JS files
       const V = Date.now();
 
-      // ── Auth state listener ──
-      onAuthStateChanged(auth, (user) => {
-        if (user) {
-          loginScreen.style.display  = "none";
-          gameUI.style.display       = "block";
-          uiName.textContent         = user.displayName || user.email;
+      // ── Save position to Firestore (called from main.js) ──
+      window.LERMA_SAVE_POS = async (x, y) => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+          await setDoc(doc(db, "players", user.uid), {
+            displayName: user.displayName || user.email,
+            x, y,
+            lastSeen: serverTimestamp()
+          }, { merge: true });
+        } catch (e) {
+          console.warn("[LERMA] save pos failed", e);
+        }
+      };
 
-          // Set identity BEFORE loading game scripts
+      // ── Auth state listener ──
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          loginScreen.style.display = "none";
+          gameUI.style.display      = "block";
+          uiName.textContent        = user.displayName || user.email;
+
+          // Load saved position from Firestore
+          let savedX = null, savedY = null;
+          try {
+            const snap = await getDoc(doc(db, "players", user.uid));
+            if (snap.exists()) {
+              savedX = snap.data().x ?? null;
+              savedY = snap.data().y ?? null;
+            }
+          } catch (e) {
+            console.warn("[LERMA] load pos failed", e);
+          }
+
+          // Set identity + saved position BEFORE loading game scripts
           window.LERMA_USER = {
             uid:         user.uid,
             displayName: user.displayName || user.email,
-            photoURL:    user.photoURL
+            photoURL:    user.photoURL,
+            savedX,
+            savedY
           };
 
           if (!window.LERMA_GAME_STARTED) {
             window.LERMA_GAME_STARTED = true;
-            // Load scripts with cache-busting version param
             const s = document.createElement("script");
             s.src = `./net.js?v=${V}`;
             document.body.appendChild(s);

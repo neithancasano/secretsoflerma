@@ -41,10 +41,12 @@
       }
 
       function sendHello() {
-        // Always read from LERMA_USER at send time, not at connect time
         const user = window.LERMA_USER;
         const name = (user && user.displayName) ? user.displayName : "Traveler";
-        safeSend({ t: "HELLO", name });
+        // Send saved position so server can spawn us at the right spot
+        const savedX = (user && user.savedX != null) ? user.savedX : null;
+        const savedY = (user && user.savedY != null) ? user.savedY : null;
+        safeSend({ t: "HELLO", name, savedX, savedY });
       }
 
       function connectNow() {

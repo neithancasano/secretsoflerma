@@ -9,6 +9,15 @@
     origin: { x: 480, y: 90 }
   };
 
+  // Throttle position saves — only save every 2 seconds max
+  let lastSaveAt = 0;
+  function maybeSavePos(x, y) {
+    const now = Date.now();
+    if (now - lastSaveAt < 2000) return;
+    lastSaveAt = now;
+    if (window.LERMA_SAVE_POS) window.LERMA_SAVE_POS(x, y);
+  }
+
   function tileToScreen(tx, ty) {
     const x = (tx - ty) * (ISO_W / 2) + STATE.origin.x;
     const y = (tx + ty) * (ISO_H / 2) + STATE.origin.y;
@@ -33,11 +42,8 @@
     let p = STATE.players.get(id);
 
     if (!p) {
-      // Player sprite — pill shape
       const base = scene.add.ellipse(0, 0, 18, 10, 0x7dd3fc).setOrigin(0.5, 0.5);
       const body = scene.add.rectangle(0, 0, 10, 16, 0x7dd3fc).setOrigin(0.5, 1);
-
-      // Name label above the sprite
       const label = scene.add.text(0, -24, name || id, {
         fontSize: '11px',
         fontFamily: 'system-ui, sans-serif',
@@ -72,7 +78,6 @@
     const base  = p.sprite.list[1];
     body.fillColor = color;
     base.fillColor = color;
-    // Your own name is brighter
     if (p.label) p.label.setColor(isYou ? '#a3e635' : '#e2e8f0');
   }
 
@@ -95,8 +100,6 @@
       this.grid = this.add.graphics();
       this.recomputeOrigin();
       this.drawIsoGrid();
-
-      // Pass display name to the server on connect
       this.net = window.LERMA_NET.connect((msg) => this.onNet(msg));
 
       this.input.on("pointerdown", (pointer) => {
@@ -141,12 +144,22 @@
         for (const id of Array.from(STATE.players.keys())) removePlayer(id);
         for (const pl of msg.players) upsertPlayer(this, pl.id, pl.x, pl.y, pl.name);
         for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p); }
+
+        // Save our starting position
+        const me = msg.players.find(pl => pl.id === STATE.you);
+        if (me) maybeSavePos(me.x, me.y);
         return;
       }
 
       if (msg.t === "DELTA") {
         if (Array.isArray(msg.rm)) for (const id of msg.rm) removePlayer(id);
-        if (Array.isArray(msg.up)) for (const u of msg.up) upsertPlayer(this, u.id, u.x, u.y, u.name);
+        if (Array.isArray(msg.up)) {
+          for (const u of msg.up) {
+            upsertPlayer(this, u.id, u.x, u.y, u.name);
+            // Save our own position when we move
+            if (u.id === STATE.you) maybeSavePos(u.x, u.y);
+          }
+        }
         for (const p of STATE.players.values()) { setPlayerVisual(p); setDepth(p); }
         return;
       }
