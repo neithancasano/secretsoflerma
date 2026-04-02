@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "tool": "Secrets of Lerma — Sprite Mapper",
+    "spritesheet": "player.png",
+    "frameWidth": 64,
+    "frameHeight": 64,
+    "sheetCols": 13,
+    "sheetWidth": 832,
+    "sheetHeight": 3456
+  },
+  "animations": [
+    {
+      "name": "walk_up",
+      "direction": "up",
+      "frames": [
+        {"row":8,"col":0,"index":104},{"row":8,"col":1,"index":105},{"row":8,"col":2,"index":106},
+        {"row":8,"col":3,"index":107},{"row":8,"col":4,"index":108},{"row":8,"col":5,"index":109},
+        {"row":8,"col":6,"index":110},{"row":8,"col":7,"index":111},{"row":8,"col":8,"index":112}
+      ]
+    },
+    {
+      "name": "walk_left",
+      "direction": "left",
+      "frames": [
+        {"row":9,"col":0,"index":117},{"row":9,"col":1,"index":118},{"row":9,"col":2,"index":119},
+        {"row":9,"col":3,"index":120},{"row":9,"col":4,"index":121},{"row":9,"col":5,"index":122},
+        {"row":9,"col":6,"index":123},{"row":9,"col":7,"index":124},{"row":9,"col":8,"index":125}
+      ]
+    },
+    {
+      "name": "walk_down",
+      "direction": "down",
+      "frames": [
+        {"row":10,"col":0,"index":130},{"row":10,"col":1,"index":131},{"row":10,"col":2,"index":132},
+        {"row":10,"col":3,"index":133},{"row":10,"col":4,"index":134},{"row":10,"col":5,"index":135},
+        {"row":10,"col":6,"index":136},{"row":10,"col":7,"index":137},{"row":10,"col":8,"index":138}
+      ]
+    },
+    {
+      "name": "walk_right",
+      "direction": "right",
+      "frames": [
+        {"row":11,"col":0,"index":143},{"row":11,"col":1,"index":144},{"row":11,"col":2,"index":145},
+        {"row":11,"col":3,"index":146},{"row":11,"col":4,"index":147},{"row":11,"col":5,"index":148},
+        {"row":11,"col":6,"index":149},{"row":11,"col":7,"index":150},{"row":11,"col":8,"index":151}
+      ]
+    }
+  ]
+}
