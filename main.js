@@ -14,15 +14,31 @@
   };
 
   // ── Migs spritesheet config (verified via spritemap.html) ──────────────────
-  // Sheet: 832×3456px, 13 cols × 54 rows, 64×64px per frame
-  // idle_down = row 24, cols 0-1 → flat indices 312, 313
   const MIGS_SHEET = {
-    frameWidth:  64,
-    frameHeight: 64,
-    scale: 1.5,          // display scale on the iso map
+    frameWidth: 64, frameHeight: 64, scale: 1.5,
     anims: {
       idle_down: { frames: [312, 313], frameRate: 4, repeat: -1 },
     },
+  };
+
+  // ── Player spritesheet config (verified via spritemap.html) ───────────────
+  // Same sheet dimensions as Migs: 832×3456, 13 cols, 64×64 frames
+  // Isometric direction mapping:
+  //   dx>0 (moving to higher tile X)  → walk_right  (moves screen right-down)
+  //   dx<0 (moving to lower tile X)   → walk_left   (moves screen left-up)
+  //   dy>0 (moving to higher tile Y)  → walk_down   (moves screen left-down)
+  //   dy<0 (moving to lower tile Y)   → walk_up     (moves screen right-up)
+  //   diagonal: whichever axis delta is larger wins
+  const PLAYER_SHEET = {
+    frameWidth: 64, frameHeight: 64, scale: 1.5,
+    anims: {
+      walk_up:    { frames:[104,105,106,107,108,109,110,111,112], frameRate:9, repeat:-1 },
+      walk_left:  { frames:[117,118,119,120,121,122,123,124,125], frameRate:9, repeat:-1 },
+      walk_down:  { frames:[130,131,132,133,134,135,136,137,138], frameRate:9, repeat:-1 },
+      walk_right: { frames:[143,144,145,146,147,148,149,150,151], frameRate:9, repeat:-1 },
+    },
+    // Fallback idle: first frame of walk_down (just stands still)
+    idleFrame: 130,
   };
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -56,6 +72,22 @@
   function screenToTile(sx,sy){const x=sx-STATE.origin.x,y=sy-STATE.origin.y;return{tx:(y/(ISO_H/2)+x/(ISO_W/2))/2,ty:(y/(ISO_H/2)-x/(ISO_W/2))/2};}
   function clampTile(tx,ty){return{tx:Math.max(0,Math.min(STATE.map.w-1,tx)),ty:Math.max(0,Math.min(STATE.map.h-1,ty))};}
   function getTile(x,y){if(!STATE.map.tiles)return 0;return STATE.map.tiles[y*STATE.map.w+x]??0;}
+
+  // ── Iso walk direction from tile deltas ───────────────────────────────────
+  // dx = tx - rx (target minus current rendered position)
+  // dy = ty - ry
+  // On an iso grid:
+  //   +dx alone  = moving northeast screen = walk_right
+  //   -dx alone  = moving southwest screen = walk_left
+  //   +dy alone  = moving southeast screen = walk_down
+  //   -dy alone  = moving northwest screen = walk_up
+  // For diagonals the dominant axis wins.
+  function isoDirection(dx, dy) {
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (adx < 0.001 && ady < 0.001) return null; // standing still
+    if (adx >= ady) return dx > 0 ? 'right' : 'left';
+    return dy > 0 ? 'down' : 'up';
+  }
 
   const STAT_NAMES=[{key:'str',label:'STR'},{key:'agi',label:'AGI'},{key:'vit',label:'VIT'},{key:'int',label:'INT'},{key:'dex',label:'DEX'},{key:'luk',label:'LUK'}];
   function statCost(v){return Math.floor(v/10)+2;}
@@ -153,24 +185,123 @@
     el.textContent='📍 '+zoneName;
   }
 
-  function upsertPlayer(scene,id,tx,ty,name,level){
-    let p=STATE.players.get(id);
-    if(!p){
-      const base=scene.add.ellipse(0,0,18,10,0x7dd3fc).setOrigin(0.5,0.5);
-      const body=scene.add.rectangle(0,0,10,16,0x7dd3fc).setOrigin(0.5,1);
-      const label=scene.add.text(0,-24,name||id,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#e2e8f0',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-      const lvlTag=scene.add.text(0,-36,`Lv${level||1}`,{fontSize:'9px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#0b1020',strokeThickness:2,resolution:2}).setOrigin(0.5,1);
-      const container=scene.add.container(0,0,[body,base,label,lvlTag]);
-      p={id,tx,ty,rx:tx,ry:ty,sprite:container,label,lvlTag,body};
-      STATE.players.set(id,p);
-    } else {
-      if(name&&p.label)p.label.setText(name);
-      if(level&&p.lvlTag)p.lvlTag.setText(`Lv${level}`);
+  // ── Register all player walk animations (idempotent) ──────────────────────
+  function ensurePlayerAnims(scene) {
+    const KEY = 'player-sheet';
+    const cfg = PLAYER_SHEET;
+    for (const [animName, def] of Object.entries(cfg.anims)) {
+      const key = `player-${animName}`;
+      if (!scene.anims.exists(key)) {
+        scene.anims.create({
+          key,
+          frames: scene.anims.generateFrameNumbers(KEY, { frames: def.frames }),
+          frameRate: def.frameRate,
+          repeat: def.repeat,
+        });
+      }
     }
-    p.tx=tx;p.ty=ty;
   }
+
+  // ── Build one player entity ───────────────────────────────────────────────
+  function upsertPlayer(scene, id, tx, ty, name, level) {
+    let p = STATE.players.get(id);
+    if (!p) {
+      const isLocal = id === STATE.you;
+      const KEY = 'player-sheet';
+      const cfg = PLAYER_SHEET;
+
+      if (scene.textures.exists(KEY)) {
+        // ── Sprite-based player ──
+        ensurePlayerAnims(scene);
+
+        const spr = scene.add.sprite(0, 0, KEY);
+        spr.setScale(cfg.scale);
+        spr.setOrigin(0.5, 1);           // feet anchor
+        spr.setFrame(cfg.idleFrame);     // stand still on spawn
+
+        const sprH = cfg.frameHeight * cfg.scale;
+        const label = scene.add.text(0, -sprH - 2, name || id, {
+          fontSize:'11px', fontFamily:'system-ui,sans-serif',
+          color: isLocal ? '#a3e635' : '#e2e8f0',
+          stroke:'#0b1020', strokeThickness:3, resolution:2,
+        }).setOrigin(0.5, 1);
+
+        const lvlTag = scene.add.text(0, -sprH - 14, `Lv${level||1}`, {
+          fontSize:'9px', fontFamily:'system-ui,sans-serif',
+          color:'#a3e635', stroke:'#0b1020', strokeThickness:2, resolution:2,
+        }).setOrigin(0.5, 1);
+
+        // Subtle highlight ring for the local player
+        const ring = isLocal
+          ? scene.add.ellipse(0, 0, 22, 10, 0xa3e635, 0.25)
+          : null;
+
+        const children = ring
+          ? [ring, spr, label, lvlTag]
+          : [spr, label, lvlTag];
+
+        const container = scene.add.container(0, 0, children);
+        p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, lvlTag,
+              body:spr, useSprite:true, facing:'down', moving:false };
+      } else {
+        // ── Shape fallback (player-sheet not yet loaded) ──
+        const color = isLocal ? 0xa3e635 : 0x7dd3fc;
+        const base  = scene.add.ellipse(0,0,18,10,color).setOrigin(0.5,0.5);
+        const body  = scene.add.rectangle(0,0,10,16,color).setOrigin(0.5,1);
+        const label = scene.add.text(0,-24,name||id,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#e2e8f0',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const lvlTag= scene.add.text(0,-36,`Lv${level||1}`,{fontSize:'9px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#0b1020',strokeThickness:2,resolution:2}).setOrigin(0.5,1);
+        const container=scene.add.container(0,0,[body,base,label,lvlTag]);
+        p={id,tx,ty,rx:tx,ry:ty,sprite:container,label,lvlTag,body,useSprite:false,facing:'down',moving:false};
+      }
+      STATE.players.set(id, p);
+    } else {
+      if (name && p.label)  p.label.setText(name);
+      if (level && p.lvlTag) p.lvlTag.setText(`Lv${level}`);
+    }
+    p.tx = tx; p.ty = ty;
+  }
+
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
-  function setPlayerVisual(p){const isYou=p.id===STATE.you;const color=isYou?0xa3e635:0x7dd3fc;p.sprite.list[0].fillColor=color;p.sprite.list[1].fillColor=color;if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');}
+
+  // setPlayerVisual now only used for shape-based fallback players
+  function setPlayerVisual(p){
+    if (p.useSprite) return; // sprite players manage their own tint
+    const isYou=p.id===STATE.you;
+    const color=isYou?0xa3e635:0x7dd3fc;
+    p.sprite.list[0].fillColor=color;
+    p.sprite.list[1].fillColor=color;
+    if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');
+  }
+
+  // ── Update walk animation for a sprite-based player ──────────────────────
+  function updatePlayerAnim(p, dx, dy) {
+    if (!p.useSprite) return;
+    const dir = isoDirection(dx, dy);
+    const isMoving = dir !== null;
+
+    if (isMoving) {
+      const animKey = `player-walk_${dir}`;
+      // Only switch if direction changed or was idle
+      if (!p.moving || p.facing !== dir) {
+        p.body.play(animKey, true);
+        p.facing  = dir;
+        p.moving  = true;
+      }
+    } else {
+      if (p.moving) {
+        // Arrived — freeze on idle frame for current facing
+        const idleFrames = {
+          down:  PLAYER_SHEET.anims.walk_down.frames[0],
+          up:    PLAYER_SHEET.anims.walk_up.frames[0],
+          left:  PLAYER_SHEET.anims.walk_left.frames[0],
+          right: PLAYER_SHEET.anims.walk_right.frames[0],
+        };
+        p.body.stop();
+        p.body.setFrame(idleFrames[p.facing] ?? PLAYER_SHEET.idleFrame);
+        p.moving = false;
+      }
+    }
+  }
 
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
     let n=STATE.npcs.get(id);
@@ -182,46 +313,30 @@
       let container, label, hpFill, body;
 
       if(isMigs){
-        // ── Migs: sprite-based, verified frames from spritemap tool ──
         const KEY = 'migs-sheet';
         const cfg = MIGS_SHEET;
-
-        // Create idle_down animation once (idempotent guard)
         if(!scene.anims.exists('migs-idle_down')){
           scene.anims.create({
-            key: 'migs-idle_down',
-            frames: scene.anims.generateFrameNumbers(KEY, { frames: cfg.anims.idle_down.frames }),
-            frameRate: cfg.anims.idle_down.frameRate,
-            repeat: cfg.anims.idle_down.repeat,
+            key:'migs-idle_down',
+            frames:scene.anims.generateFrameNumbers(KEY,{frames:cfg.anims.idle_down.frames}),
+            frameRate:cfg.anims.idle_down.frameRate,
+            repeat:cfg.anims.idle_down.repeat,
           });
         }
-
-        const migSprite = scene.add.sprite(0, 0, KEY);
+        const migSprite=scene.add.sprite(0,0,KEY);
         migSprite.setScale(cfg.scale);
-        migSprite.setOrigin(0.5, 1);   // anchor at feet
+        migSprite.setOrigin(0.5,1);
         migSprite.play('migs-idle_down');
-
-        // Name label — sits above the sprite
-        const spriteH = cfg.frameHeight * cfg.scale;
-        label = scene.add.text(0, -spriteH - 2, name || 'Migs', {
-          fontSize:'10px', fontFamily:'system-ui,sans-serif',
-          color:'#fde68a', stroke:'#0b1020', strokeThickness:3, resolution:2,
-        }).setOrigin(0.5, 1);
-
-        // Chat bubble above label
-        const chatBubble = scene.add.text(0, -spriteH - 16, '💬', {
-          fontSize:'13px', resolution:2,
-        }).setOrigin(0.5, 1);
-
-        container = scene.add.container(0, 0, [migSprite, label, chatBubble]);
-        container.setSize(cfg.frameWidth * cfg.scale, spriteH);
+        const spriteH=cfg.frameHeight*cfg.scale;
+        label=scene.add.text(0,-spriteH-2,name||'Migs',{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:'#fde68a',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const chatBubble=scene.add.text(0,-spriteH-16,'💬',{fontSize:'13px',resolution:2}).setOrigin(0.5,1);
+        container=scene.add.container(0,0,[migSprite,label,chatBubble]);
+        container.setSize(cfg.frameWidth*cfg.scale,spriteH);
         container.setInteractive();
-
-        body    = migSprite;        // sprite ref for future flash effects
-        hpFill  = { width:0, x:0 }; // dummy — Migs has no HP bar
+        body=migSprite;
+        hpFill={width:0,x:0};
 
       } else {
-        // ── All other NPCs: original shape-based rendering ──
         const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
         body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
         const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
@@ -237,7 +352,6 @@
         container.setInteractive();
       }
 
-      // ── Shared pointer events ──
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -249,11 +363,8 @@
         }
       });
       container.on('pointerover',()=>{
-        if(isMigs){
-          scene.game.canvas.classList.add('migs-hover-cursor');
-        } else {
-          scene.input.setDefaultCursor('crosshair');
-        }
+        if(isMigs) scene.game.canvas.classList.add('migs-hover-cursor');
+        else scene.input.setDefaultCursor('crosshair');
       });
       container.on('pointerout',()=>{
         scene.game.canvas.classList.remove('migs-hover-cursor');
@@ -300,10 +411,13 @@
     constructor(){super('main');}
 
     preload(){
-      // Load Migs's spritesheet — dimensions verified via spritemap.html
+      // Migs NPC spritesheet
       this.load.spritesheet('migs-sheet', '/secretsoflerma/assets/migs.png', {
-        frameWidth:  MIGS_SHEET.frameWidth,
-        frameHeight: MIGS_SHEET.frameHeight,
+        frameWidth: MIGS_SHEET.frameWidth, frameHeight: MIGS_SHEET.frameHeight,
+      });
+      // Player character spritesheet
+      this.load.spritesheet('player-sheet', '/secretsoflerma/assets/player.png', {
+        frameWidth: PLAYER_SHEET.frameWidth, frameHeight: PLAYER_SHEET.frameHeight,
       });
     }
 
@@ -463,7 +577,17 @@
       if(msg.t==='PLAYER_HIT'){
         updatePlayerHpBar(msg.hp,msg.maxHp);
         const me=STATE.players.get(STATE.you);
-        if(me){me.sprite.list[0].setFillStyle(0xff4444);me.sprite.list[1].setFillStyle(0xff4444);setTimeout(()=>setPlayerVisual(me),150);spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);}return;
+        if(me){
+          if(me.useSprite){
+            me.body.setTintFill(0xff4444);
+            setTimeout(()=>{if(me.body)me.body.clearTint();},150);
+          } else {
+            me.sprite.list[0].setFillStyle(0xff4444);
+            me.sprite.list[1].setFillStyle(0xff4444);
+            setTimeout(()=>setPlayerVisual(me),150);
+          }
+          spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);
+        }return;
       }
       if(msg.t==='STATS_UPDATE'){
         renderStatWindow(msg.stats,this.net);
@@ -489,20 +613,30 @@
       }
     }
 
-    update(_,dtMs){
-      const dt=dtMs/1000,FOLLOW=16;
-      for(const p of STATE.players.values()){
-        p.rx+=(p.tx-p.rx)*Math.min(1,FOLLOW*dt);
-        p.ry+=(p.ty-p.ry)*Math.min(1,FOLLOW*dt);
-        const s=tileToScreen(p.rx,p.ry);
-        p.sprite.x=s.x;p.sprite.y=s.y-6;setDepth(p,false);
+    update(_, dtMs){
+      const dt = dtMs / 1000, FOLLOW = 16;
+
+      for (const p of STATE.players.values()) {
+        const prevRx = p.rx, prevRy = p.ry;
+        p.rx += (p.tx - p.rx) * Math.min(1, FOLLOW * dt);
+        p.ry += (p.ty - p.ry) * Math.min(1, FOLLOW * dt);
+        const s = tileToScreen(p.rx, p.ry);
+        p.sprite.x = s.x; p.sprite.y = s.y - 6;
+        setDepth(p, false);
+
+        // Drive walk animation from the movement delta this frame
+        const dx = p.tx - prevRx;
+        const dy = p.ty - prevRy;
+        updatePlayerAnim(p, dx, dy);
       }
+
       for(const n of STATE.npcs.values()){
         n.rx+=(n.tx-n.rx)*Math.min(1,FOLLOW*0.5*dt);
         n.ry+=(n.ty-n.ry)*Math.min(1,FOLLOW*0.5*dt);
         const s=tileToScreen(n.rx,n.ry);
         n.sprite.x=s.x;n.sprite.y=s.y-4;setDepth(n,true);
       }
+
       const me=STATE.players.get(STATE.you);
       if(me){
         const s=tileToScreen(me.rx,me.ry);
