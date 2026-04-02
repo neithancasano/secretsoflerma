@@ -622,6 +622,21 @@ function zoneToJSON(z) {
   return JSON.stringify({ w:MAP_W, h:MAP_H, tiles:z.tiles, blocked:[...z.blocked] });
 }
 
+function triggerDownload(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  // Revoke on next tick so slower browsers don't cancel the download.
+  setTimeout(() => {
+    URL.revokeObjectURL(href);
+    a.remove();
+  }, 500);
+}
+
 function buildZonesJS() {
   // ★ Object.values(zones) includes ALL zones — builtin AND custom
   const entries = Object.values(zones).map(z => {
@@ -642,24 +657,16 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   const allZones = Object.values(zones);
   setStatus(`Downloading ${allZones.length} zone files + zones.js…`);
 
+  // Download zones.js first so it isn't blocked if the browser limits
+  // large batches of automatic downloads from one click gesture.
+  triggerDownload('zones.js', buildZonesJS(), 'text/javascript');
+  await new Promise(r => setTimeout(r, 120));
+
   // Download every zone JSON (builtin + custom)
   for (const z of allZones) {
-    const blob = new Blob([zoneToJSON(z)], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${z.id}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    triggerDownload(`${z.id}.json`, zoneToJSON(z), 'application/json');
     await new Promise(r => setTimeout(r, 80));
   }
-
-  // Download zones.js (not zones_export.js — just zones.js, ready to drop in)
-  const blob2 = new Blob([buildZonesJS()], {type:'text/javascript'});
-  const a2 = document.createElement('a');
-  a2.href = URL.createObjectURL(blob2);
-  a2.download = 'zones.js';
-  a2.click();
-  URL.revokeObjectURL(a2.href);
 
   setStatus(`Done! ${allZones.length} JSONs + zones.js downloaded. Upload to both repos, then pm2 restart all.`);
 });
