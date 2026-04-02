@@ -26,7 +26,6 @@
     migsOpen:false,
   };
 
-  // Inject a CSS rule for the chat bubble cursor once
   (function injectChatCursor(){
     if(document.getElementById('migs-cursor-style'))return;
     const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><text y='26' font-size='26'>💬</text></svg>`;
@@ -45,7 +44,6 @@
   function clampTile(tx,ty){return{tx:Math.max(0,Math.min(STATE.map.w-1,tx)),ty:Math.max(0,Math.min(STATE.map.h-1,ty))};}
   function getTile(x,y){if(!STATE.map.tiles)return 0;return STATE.map.tiles[y*STATE.map.w+x]??0;}
 
-  // ── Stat window ──
   const STAT_NAMES=[{key:'str',label:'STR'},{key:'agi',label:'AGI'},{key:'vit',label:'VIT'},{key:'int',label:'INT'},{key:'dex',label:'DEX'},{key:'luk',label:'LUK'}];
   function statCost(v){return Math.floor(v/10)+2;}
 
@@ -75,7 +73,6 @@
     }
   }
 
-  // ── Migs dialogue UI ──
   function showMigsMenu(msg, net){
     STATE.migsOpen=true;
     let dlg=document.getElementById('migs-dialogue');
@@ -85,11 +82,9 @@
       dlg.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#0f172a;border:2px solid #f59e0b;border-radius:10px;padding:16px 20px;width:340px;z-index:50;font-family:system-ui,sans-serif;color:#e2e8f0;font-size:13px;';
       document.body.appendChild(dlg);
     }
-
     const destButtons=msg.destinations&&msg.destinations.length>0
       ? msg.destinations.map(d=>`<button class="migs-dest-btn" data-zone="${d.zoneId}" style="display:block;width:100%;margin:3px 0;padding:6px 10px;background:#1e293b;color:#fde68a;border:1px solid #f59e0b;border-radius:6px;cursor:pointer;text-align:left;font-size:12px;">🌀 ${d.label}</button>`).join('')
       : '';
-
     dlg.innerHTML=`
       <div style="color:#f59e0b;font-weight:700;margin-bottom:8px;">🛒 Migs</div>
       <div style="color:#cbd5e1;margin-bottom:12px;font-size:12px;line-height:1.5;">${msg.greeting}</div>
@@ -103,8 +98,6 @@
       </div>
       <div id="migs-msg" style="margin-top:8px;color:#4ade80;font-size:11px;min-height:16px;"></div>
     `;
-
-    // Wire option buttons
     dlg.querySelectorAll('.migs-opt-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
         const action=btn.dataset.action;
@@ -117,8 +110,6 @@
         net.send({t:'MIGS_ACTION',action,npcId:msg.npcId});
       });
     });
-
-    // Wire destination buttons
     dlg.querySelectorAll('.migs-dest-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
         net.send({t:'MIGS_ACTION',action:'teleport',destZone:btn.dataset.zone,npcId:msg.npcId});
@@ -138,7 +129,6 @@
     if(dlg)dlg.remove();
   }
 
-  // ── Zone indicator UI ──
   function updateZoneUI(zoneName){
     let el=document.getElementById('zone-indicator');
     if(!el){
@@ -150,7 +140,6 @@
     el.textContent='📍 '+zoneName;
   }
 
-  // ── Player ──
   function upsertPlayer(scene,id,tx,ty,name,level){
     let p=STATE.players.get(id);
     if(!p){
@@ -170,7 +159,6 @@
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
   function setPlayerVisual(p){const isYou=p.id===STATE.you;const color=isYou?0xa3e635:0x7dd3fc;p.sprite.list[0].fillColor=color;p.sprite.list[1].fillColor=color;if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');}
 
-  // ── NPC ──
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
     let n=STATE.npcs.get(id);
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
@@ -184,25 +172,17 @@
       const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
       const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
       const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-
-      // HP bar: hidden for Migs, visible for enemies
       const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
       const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
       if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
-
-      // Chat bubble indicator above Migs name
       const chatBubble=isMigs
         ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
         : null;
-
       const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
       if(chatBubble)children.push(chatBubble);
-
       const container=scene.add.container(0,0,children);
-      // Larger hit area for easier clicking, especially Migs
       container.setSize(isMigs?48:30,isMigs?48:30);
       container.setInteractive();
-
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -213,10 +193,8 @@
           body.setStrokeStyle(2,0xffff00);
         }
       });
-
       container.on('pointerover',()=>{
         if(isMigs){
-          // Use the CSS class for the emoji cursor
           scene.game.canvas.classList.add('migs-hover-cursor');
         } else {
           scene.input.setDefaultCursor('crosshair');
@@ -226,7 +204,6 @@
         scene.game.canvas.classList.remove('migs-hover-cursor');
         scene.input.setDefaultCursor('default');
       });
-
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
@@ -254,10 +231,12 @@
     bar.style.background=pct>50?'#4ade80':pct>25?'#facc15':'#ef4444';
   }
 
-  // ── Map tile fetch ──
+  // BUG FIX: always use /zones/{zoneId}.json — no more special case for lerma
   function fetchZoneMap(scene, zoneId, cb){
-    const path=zoneId==='lerma'?'/secretsoflerma/map.json':`/secretsoflerma/zones/${zoneId}.json`;
-    fetch(path).then(r=>r.json()).then(d=>{STATE.map.tiles=d.tiles;cb();}).catch(()=>{STATE.map.tiles=null;cb();});
+    fetch(`/secretsoflerma/zones/${zoneId}.json`)
+      .then(r=>r.json())
+      .then(d=>{STATE.map.tiles=d.tiles;cb();})
+      .catch(()=>{STATE.map.tiles=null;cb();});
   }
 
   class MainScene extends Phaser.Scene {
@@ -310,7 +289,6 @@
           g.lineStyle(1,colors.stroke,0.6);g.strokePoints([top,right,bottom,left,top],false);
         }
       }
-      // Draw portal indicators
       for(const portal of STATE.portals){
         const c=tileToScreen(portal.x,portal.y);
         const g2=this.tileGraphics;
@@ -342,7 +320,6 @@
         return;
       }
 
-      // ── Zone change (portal travel) ──
       if(msg.t==='ZONE_CHANGE'){
         STATE.zoneId=msg.zoneId;
         STATE.zoneName=msg.zoneName;
@@ -350,9 +327,7 @@
         STATE.map.w=msg.map.w;STATE.map.h=msg.map.h;
         updateZoneUI(STATE.zoneName);
         closeMigsMenu();
-        // Save zone to Firestore
         if(window.LERMA_SAVE_POS)window.LERMA_SAVE_POS(msg.x,msg.y,msg.zoneId);
-        // Clear and reload
         clearAllPlayers();clearAllNPCs();
         this.recomputeOrigin();
         fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());
@@ -360,7 +335,6 @@
         for(const p of STATE.players.values()){setPlayerVisual(p);setDepth(p,false);}
         if(Array.isArray(msg.npcs))for(const n of msg.npcs)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
         for(const n of STATE.npcs.values())setDepth(n,true);
-        // Show zone flash
         const zoneTxt=this.add.text(window.innerWidth/2,window.innerHeight/2,`📍 ${msg.zoneName}`,{fontSize:'22px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:4,resolution:2}).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
         this.tweens.add({targets:zoneTxt,y:window.innerHeight/2-60,alpha:0,duration:2000,ease:'Power2',onComplete:()=>zoneTxt.destroy()});
         return;
@@ -425,7 +399,6 @@
         return;
       }
 
-      // ── Migs dialogue ──
       if(msg.t==='MIGS_MENU'){showMigsMenu(msg,this.net);return;}
       if(msg.t==='MIGS_RESPONSE'){showMigsResponse(msg.message);return;}
       if(msg.t==='RESPAWN_UPDATED'){

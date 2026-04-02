@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secrets of Lerma — Map Maker</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  #topbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#0f172a;border-bottom:1px solid #1e293b;flex-shrink:0}
+  #topbar h1{font-size:15px;color:#a3e635;font-weight:700;letter-spacing:.5px}
+  .tb-sep{width:1px;height:20px;background:#1e293b}
+  .tb-btn{padding:4px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#94a3b8;font-size:12px;cursor:pointer;transition:all .15s}
+  .tb-btn:hover{background:#334155;color:#e2e8f0}
+  .tb-btn.active{background:#a3e635;color:#0b1020;border-color:#a3e635;font-weight:700}
+  #tb-zone-name{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 8px;color:#e2e8f0;font-size:12px;width:160px}
+  #tb-zone-name:focus{outline:none;border-color:#a3e635}
+  #status-bar{padding:3px 14px;font-size:11px;color:#64748b;background:#090e1a;flex-shrink:0}
+  #main{display:flex;flex:1;overflow:hidden}
+  /* World overview panel */
+  #world-panel{width:220px;flex-shrink:0;background:#0f172a;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden}
+  #world-panel h2{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;padding:8px 10px 6px;border-bottom:1px solid #1e293b}
+  #world-map-canvas{padding:8px;flex-shrink:0}
+  #zone-list{flex:1;overflow-y:auto;padding:4px}
+  .zone-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:2px;border:1px solid transparent;transition:all .1s}
+  .zone-item:hover{background:#1e293b}
+  .zone-item.active{background:#1e293b;border-color:#a3e635}
+  .zone-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .zone-item .zone-label{flex:1;color:#cbd5e1}
+  .zone-item .zone-migs{font-size:10px;color:#f59e0b}
+  /* Editor area */
+  #editor{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  #canvas-wrap{flex:1;overflow:auto;position:relative;background:#090e1a}
+  #map-canvas{display:block;cursor:crosshair;image-rendering:pixelated}
+  /* Right side panel */
+  #right-panel{width:200px;flex-shrink:0;background:#0f172a;border-left:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden}
+  #right-panel h2{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;padding:8px 10px 6px;border-bottom:1px solid #1e293b}
+  .tile-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;font-size:12px;color:#94a3b8;border-bottom:1px solid #1e293b;transition:all .1s}
+  .tile-btn:hover{background:#1e293b;color:#e2e8f0}
+  .tile-btn.active{background:#1e293b;color:#a3e635}
+  .tile-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+  .section-title{font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.6px;padding:8px 10px 4px}
+  .portal-item,.migs-item{padding:5px 10px;font-size:11px;color:#94a3b8;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:4px}
+  .portal-item .pi-label{flex:1;color:#60a5fa}
+  .del-btn{background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;padding:0 2px}
+  .del-btn:hover{color:#fca5a5}
+  select{background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;padding:2px 4px;width:100%}
+  select:focus{outline:none;border-color:#a3e635}
+  .portal-form{padding:8px 10px;border-bottom:1px solid #1e293b}
+  .portal-form label{font-size:10px;color:#64748b;display:block;margin-bottom:2px}
+  .portal-form input{width:100%;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;padding:3px 6px;margin-bottom:4px}
+  .portal-form input:focus{outline:none;border-color:#a3e635}
+  .add-btn{width:100%;padding:5px;background:#1e3a1a;border:1px solid #166534;border-radius:4px;color:#4ade80;font-size:11px;cursor:pointer}
+  .add-btn:hover{background:#166534}
+  #export-btn{margin:8px;padding:6px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#a3e635;font-size:12px;cursor:pointer;font-weight:600}
+  #export-btn:hover{background:#334155}
+  #copy-btn{margin:0 8px 8px;padding:5px;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#64748b;font-size:11px;cursor:pointer}
+  #copy-btn:hover{background:#1e293b;color:#94a3b8}
+  /* Modal */
+  #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:center;justify-content:center}
+  #modal-overlay.open{display:flex}
+  #modal{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;width:360px;max-height:80vh;overflow-y:auto}
+  #modal h3{font-size:14px;color:#a3e635;margin-bottom:12px}
+  .modal-field{margin-bottom:10px}
+  .modal-field label{font-size:11px;color:#64748b;display:block;margin-bottom:3px}
+  .modal-field input,.modal-field select{width:100%;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:12px;padding:5px 8px}
+  .modal-field input:focus,.modal-field select:focus{outline:none;border-color:#a3e635}
+  .modal-btns{display:flex;gap:8px;margin-top:14px}
+  .modal-btns button{flex:1;padding:7px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid}
+  #modal-confirm{background:#1a3a1a;border-color:#166534;color:#4ade80}
+  #modal-cancel{background:#1e293b;border-color:#334155;color:#94a3b8}
+  #modal-confirm:hover{background:#166534}
+  #modal-cancel:hover{background:#334155}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🗺 Lerma Map Maker</h1>
+  <div class="tb-sep"></div>
+  <input id="tb-zone-name" type="text" placeholder="Zone name...">
+  <button class="tb-btn" id="btn-save-meta">Save Name</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-new-zone">+ New Zone</button>
+  <button class="tb-btn" id="btn-del-zone" style="color:#f87171">🗑 Delete Zone</button>
+  <div class="tb-sep"></div>
+  <span style="font-size:11px;color:#475569">Paint:</span>
+  <button class="tb-btn active" id="paint-0" data-tile="0">🌿 Grass</button>
+  <button class="tb-btn" id="paint-1" data-tile="1">🛤 Road</button>
+  <button class="tb-btn" id="paint-2" data-tile="2">💧 Water</button>
+  <button class="tb-btn" id="paint-3" data-tile="3">🏠 Bldg</button>
+  <button class="tb-btn" id="paint-portal">🔮 Portal</button>
+  <button class="tb-btn" id="paint-migs">👤 Migs</button>
+  <button class="tb-btn" id="paint-blocked">🚫 Block</button>
+  <button class="tb-btn" id="paint-unblocked">✅ Unblock</button>
+</div>
+
+<div id="main">
+  <!-- World overview -->
+  <div id="world-panel">
+    <h2>World Map</h2>
+    <canvas id="world-map-canvas" width="204" height="160"></canvas>
+    <div id="zone-list"></div>
+  </div>
+
+  <!-- Tile editor -->
+  <div id="editor">
+    <div id="canvas-wrap">
+      <canvas id="map-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Right panel: portals, Migs, export -->
+  <div id="right-panel">
+    <h2>Portals</h2>
+    <div id="portal-list"></div>
+    <div class="portal-form" id="portal-form" style="display:none">
+      <label>Destination zone</label>
+      <select id="pf-dest"></select>
+      <label style="margin-top:6px">Portal tile X</label>
+      <input id="pf-x" type="number" min="0" max="59" placeholder="X">
+      <label>Portal tile Y</label>
+      <input id="pf-y" type="number" min="0" max="39" placeholder="Y">
+      <label>Dest X</label>
+      <input id="pf-dx" type="number" min="0" max="59" placeholder="Dest X">
+      <label>Dest Y</label>
+      <input id="pf-dy" type="number" min="0" max="39" placeholder="Dest Y">
+      <label>Label</label>
+      <input id="pf-label" type="text" placeholder="e.g. Lerma →">
+      <button class="add-btn" id="pf-add" style="margin-top:6px">Add Portal</button>
+    </div>
+    <div class="section-title">Migs NPC</div>
+    <div id="migs-section"></div>
+    <div class="section-title">Export</div>
+    <button id="export-btn">⬇ Download All JSONs</button>
+    <button id="copy-btn">📋 Copy current JSON</button>
+  </div>
+</div>
+
+<div id="status-bar">Ready — select a zone to start editing</div>
+
+<!-- Portal placement modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h3 id="modal-title">Place Portal</h3>
+    <div class="modal-field">
+      <label>Destination zone</label>
+      <select id="m-dest"></select>
+    </div>
+    <div class="modal-field">
+      <label>Dest X (where player arrives)</label>
+      <input id="m-dx" type="number" min="0" max="59" value="1">
+    </div>
+    <div class="modal-field">
+      <label>Dest Y</label>
+      <input id="m-dy" type="number" min="0" max="39" value="20">
+    </div>
+    <div class="modal-field">
+      <label>Label (optional)</label>
+      <input id="m-label" type="text" placeholder="e.g. Lerma →">
+    </div>
+    <div class="modal-btns">
+      <button id="modal-confirm">✓ Place</button>
+      <button id="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────
+const MAP_W = 60, MAP_H = 40;
+const CELL = 14; // pixels per tile in editor
+
+const TILE_COLORS = {
+  0: '#2d5a1b',
+  1: '#8B6914',
+  2: '#1a3a6e',
+  3: '#555566',
+};
+const TILE_BORDER = {
+  0: '#245016',
+  1: '#7a5c10',
+  2: '#152e58',
+  3: '#444455',
+};
+
+// World layout grid positions (col, row) — visual only
+const WORLD_LAYOUT = {
+  lerma:       {col:4, row:2},
+  panganiban:  {col:3, row:2},
+  plaza_rizal: {col:3, row:3},
+  diversion:   {col:5, row:2},
+  tabuco:      {col:5, row:3},
+  bagumbayan:  {col:2, row:2},
+  liboton:     {col:1, row:2},
+  francia:     {col:1, row:1},
+  san_felipe:  {col:0, row:1},
+};
+
+// ─────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────
+let zones = {};       // id -> { id, name, tiles[], blocked:Set, portals[], migs:{x,y}|null }
+let currentZone = null;
+let paintMode = 0;    // 0,1,2,3 = tile; 'portal','migs','blocked','unblocked'
+let painting = false;
+let pendingPortalTile = null; // {x,y} while modal open
+
+// ─────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────
+const mapCanvas = document.getElementById('map-canvas');
+const ctx = mapCanvas.getContext('2d');
+const worldCanvas = document.getElementById('world-map-canvas');
+const wctx = worldCanvas.getContext('2d');
+const zoneList = document.getElementById('zone-list');
+const portalList = document.getElementById('portal-list');
+const migsSection = document.getElementById('migs-section');
+const statusBar = document.getElementById('status-bar');
+const nameInput = document.getElementById('tb-zone-name');
+
+mapCanvas.width  = MAP_W * CELL;
+mapCanvas.height = MAP_H * CELL;
+
+// ─────────────────────────────────────────────────────
+// Load all zone JSONs from server
+// ─────────────────────────────────────────────────────
+const ZONE_IDS = ['lerma','panganiban','plaza_rizal','diversion','tabuco','bagumbayan','liboton','francia','san_felipe'];
+const ZONE_NAMES = {
+  lerma:'Barangay Lerma', panganiban:'Panganiban', plaza_rizal:'Plaza Rizal',
+  diversion:'Diversion Road', tabuco:'Tabuco', bagumbayan:'Bagumbayan',
+  liboton:'Liboton', francia:'Francia', san_felipe:'San Felipe'
+};
+
+const PORTAL_DEFS = {
+  lerma:      [{x:0,y:20,destZone:'panganiban',destX:58,destY:20,label:'Panganiban ←'},{x:59,y:20,destZone:'diversion',destX:1,destY:20,label:'Diversion →'}],
+  panganiban: [{x:59,y:20,destZone:'lerma',destX:1,destY:20,label:'Lerma →'},{x:30,y:39,destZone:'plaza_rizal',destX:30,destY:1,label:'Plaza Rizal ↓'}],
+  plaza_rizal:[{x:30,y:0,destZone:'panganiban',destX:30,destY:38,label:'Panganiban ↑'},{x:0,y:20,destZone:'bagumbayan',destX:58,destY:20,label:'Bagumbayan ←'}],
+  diversion:  [{x:0,y:20,destZone:'lerma',destX:58,destY:20,label:'Lerma ←'},{x:30,y:39,destZone:'tabuco',destX:30,destY:1,label:'Tabuco ↓'}],
+  tabuco:     [{x:30,y:0,destZone:'diversion',destX:30,destY:38,label:'Diversion ↑'}],
+  bagumbayan: [{x:59,y:20,destZone:'plaza_rizal',destX:1,destY:20,label:'Plaza Rizal →'},{x:0,y:20,destZone:'liboton',destX:58,destY:20,label:'Liboton ←'}],
+  liboton:    [{x:59,y:20,destZone:'bagumbayan',destX:1,destY:20,label:'Bagumbayan →'},{x:30,y:0,destZone:'francia',destX:30,destY:38,label:'Francia ↑'}],
+  francia:    [{x:30,y:39,destZone:'liboton',destX:30,destY:1,label:'Liboton ↓'},{x:0,y:20,destZone:'san_felipe',destX:58,destY:20,label:'San Felipe ←'}],
+  san_felipe: [{x:59,y:20,destZone:'francia',destX:1,destY:20,label:'Francia →'}],
+};
+const MIGS_DEFS = {lerma:{x:30,y:20},plaza_rizal:{x:30,y:20},francia:{x:30,y:20},tabuco:{x:30,y:20}};
+
+async function loadZones() {
+  for (const id of ZONE_IDS) {
+    try {
+      const res = await fetch(`/secretsoflerma/zones/${id}.json`);
+      const data = await res.json();
+      zones[id] = {
+        id,
+        name: ZONE_NAMES[id] || id,
+        tiles: Array.from(data.tiles),
+        blocked: new Set(data.blocked || []),
+        portals: (PORTAL_DEFS[id] || []).map(p=>({...p})),
+        migs: MIGS_DEFS[id] ? {...MIGS_DEFS[id]} : null,
+      };
+    } catch(e) {
+      // create blank zone
+      zones[id] = {
+        id, name: ZONE_NAMES[id] || id,
+        tiles: new Array(MAP_W*MAP_H).fill(0),
+        blocked: new Set(),
+        portals: (PORTAL_DEFS[id]||[]).map(p=>({...p})),
+        migs: MIGS_DEFS[id] ? {...MIGS_DEFS[id]} : null,
+      };
+    }
+  }
+  renderZoneList();
+  drawWorldMap();
+  selectZone('lerma');
+}
+
+// ─────────────────────────────────────────────────────
+// Paint mode buttons
+// ─────────────────────────────────────────────────────
+document.querySelectorAll('.tb-btn[data-tile]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tb-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    paintMode = parseInt(btn.dataset.tile);
+  });
+});
+['portal','migs','blocked','unblocked'].forEach(m=>{
+  document.getElementById('paint-'+m).addEventListener('click',()=>{
+    document.querySelectorAll('.tb-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('paint-'+m).classList.add('active');
+    paintMode = m;
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// Zone management
+// ─────────────────────────────────────────────────────
+function selectZone(id) {
+  currentZone = id;
+  nameInput.value = zones[id].name;
+  renderZoneList();
+  renderEditor();
+  renderRightPanel();
+  setStatus(`Editing: ${zones[id].name}`);
+}
+
+document.getElementById('btn-save-meta').addEventListener('click',()=>{
+  if(!currentZone)return;
+  zones[currentZone].name = nameInput.value.trim() || zones[currentZone].name;
+  renderZoneList();
+  drawWorldMap();
+  setStatus('Zone name saved');
+});
+
+document.getElementById('btn-new-zone').addEventListener('click',()=>{
+  const id = 'zone_'+Date.now();
+  zones[id] = {id, name:'New Zone', tiles:new Array(MAP_W*MAP_H).fill(0), blocked:new Set(), portals:[], migs:null};
+  renderZoneList();
+  drawWorldMap();
+  selectZone(id);
+});
+
+document.getElementById('btn-del-zone').addEventListener('click',()=>{
+  if(!currentZone)return;
+  if(!confirm(`Delete zone "${zones[currentZone].name}"?`))return;
+  delete zones[currentZone];
+  const remaining = Object.keys(zones);
+  currentZone = remaining.length?remaining[0]:null;
+  renderZoneList();
+  drawWorldMap();
+  if(currentZone)selectZone(currentZone);
+  else{ctx.clearRect(0,0,mapCanvas.width,mapCanvas.height);portalList.innerHTML='';migsSection.innerHTML='';}
+});
+
+// ─────────────────────────────────────────────────────
+// Zone list
+// ─────────────────────────────────────────────────────
+const ZONE_HUE = ['#4ade80','#60a5fa','#f59e0b','#e879f9','#f87171','#34d399','#fb923c','#a78bfa','#67e8f9'];
+function renderZoneList(){
+  zoneList.innerHTML='';
+  Object.values(zones).forEach((z,i)=>{
+    const item = document.createElement('div');
+    item.className='zone-item'+(currentZone===z.id?' active':'');
+    const color = ZONE_HUE[i%ZONE_HUE.length];
+    item.innerHTML=`<div class="zone-dot" style="background:${color}"></div><span class="zone-label">${z.name}</span>${z.migs?'<span class="zone-migs">👤</span>':''}`;
+    item.addEventListener('click',()=>selectZone(z.id));
+    zoneList.appendChild(item);
+  });
+}
+
+// ─────────────────────────────────────────────────────
+// World map overview
+// ─────────────────────────────────────────────────────
+function drawWorldMap(){
+  const cw=worldCanvas.width, ch=worldCanvas.height;
+  wctx.clearRect(0,0,cw,ch);
+  wctx.fillStyle='#090e1a';
+  wctx.fillRect(0,0,cw,ch);
+
+  const cols=7,rows=5,cellW=Math.floor(cw/cols),cellH=Math.floor(ch/rows);
+  const ids = Object.keys(zones);
+
+  ids.forEach((id,i)=>{
+    const layout = WORLD_LAYOUT[id];
+    let col,row;
+    if(layout){col=layout.col;row=layout.row;}
+    else{col=i%cols;row=Math.floor(i/cols)+3;}
+
+    const x=col*cellW+2,y=row*cellH+2,w=cellW-4,h=cellH-4;
+    const isActive=id===currentZone;
+    wctx.fillStyle=isActive?'#1e3a1a':'#0f172a';
+    wctx.strokeStyle=isActive?'#a3e635':'#334155';
+    wctx.lineWidth=isActive?2:1;
+    wctx.beginPath();wctx.roundRect(x,y,w,h,3);wctx.fill();wctx.stroke();
+
+    // zone abbreviation
+    const label=zones[id].name.split(' ').map(w=>w[0]).join('');
+    wctx.fillStyle=isActive?'#a3e635':'#64748b';
+    wctx.font=`bold ${Math.min(w/2,10)}px system-ui`;
+    wctx.textAlign='center';wctx.textBaseline='middle';
+    wctx.fillText(label,x+w/2,y+h/2);
+
+    // Draw portal connections
+    const z=zones[id];
+    if(z && z.portals){
+      z.portals.forEach(p=>{
+        const destLayout=WORLD_LAYOUT[p.destZone];
+        if(!destLayout)return;
+        const sx=col*cellW+cellW/2,sy=row*cellH+cellH/2;
+        const dx2=destLayout.col*cellW+cellW/2,dy2=destLayout.row*cellH+cellH/2;
+        wctx.strokeStyle='#1e3a5c';wctx.lineWidth=1;
+        wctx.beginPath();wctx.moveTo(sx,sy);wctx.lineTo(dx2,dy2);wctx.stroke();
+      });
+    }
+  });
+
+  wctx.canvas.onclick=(e)=>{
+    const rect=worldCanvas.getBoundingClientRect();
+    const mx=(e.clientX-rect.left)*(cw/rect.width);
+    const my=(e.clientY-rect.top)*(ch/rect.height);
+    const col=Math.floor(mx/cellW),row=Math.floor(my/cellH);
+    const found=Object.values(zones).find(z=>{
+      const l=WORLD_LAYOUT[z.id];
+      if(l)return l.col===col&&l.row===row;
+      return false;
+    });
+    if(found)selectZone(found.id);
+  };
+}
+
+// ─────────────────────────────────────────────────────
+// Tile editor
+// ─────────────────────────────────────────────────────
+function renderEditor(){
+  if(!currentZone)return;
+  const z=zones[currentZone];
+  ctx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+
+  for(let y=0;y<MAP_H;y++){
+    for(let x=0;x<MAP_W;x++){
+      const t=z.tiles[y*MAP_W+x]||0;
+      ctx.fillStyle=TILE_COLORS[t]||TILE_COLORS[0];
+      ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      ctx.strokeStyle=TILE_BORDER[t]||TILE_BORDER[0];
+      ctx.lineWidth=.5;
+      ctx.strokeRect(x*CELL+.5,y*CELL+.5,CELL-1,CELL-1);
+    }
+  }
+
+  // Draw blocked overlay
+  ctx.fillStyle='rgba(239,68,68,0.35)';
+  for(const key of z.blocked){
+    const [bx,by]=key.split(',').map(Number);
+    ctx.fillRect(bx*CELL,by*CELL,CELL,CELL);
+  }
+
+  // Draw portals
+  z.portals.forEach(p=>{
+    ctx.fillStyle='rgba(163,230,53,0.55)';
+    ctx.fillRect(p.x*CELL,p.y*CELL,CELL,CELL);
+    ctx.fillStyle='#a3e635';
+    ctx.font=`bold 8px system-ui`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('P',p.x*CELL+CELL/2,p.y*CELL+CELL/2);
+  });
+
+  // Draw Migs
+  if(z.migs){
+    ctx.fillStyle='rgba(245,158,11,0.7)';
+    ctx.fillRect(z.migs.x*CELL,z.migs.y*CELL,CELL,CELL);
+    ctx.fillStyle='#fbbf24';
+    ctx.font=`bold 8px system-ui`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('M',z.migs.x*CELL+CELL/2,z.migs.y*CELL+CELL/2);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// Mouse painting
+// ─────────────────────────────────────────────────────
+function getCell(e){
+  const rect=mapCanvas.getBoundingClientRect();
+  const scaleX=mapCanvas.width/rect.width;
+  const scaleY=mapCanvas.height/rect.height;
+  const cx=Math.floor((e.clientX-rect.left)*scaleX/CELL);
+  const cy=Math.floor((e.clientY-rect.top)*scaleY/CELL);
+  return {x:Math.max(0,Math.min(MAP_W-1,cx)),y:Math.max(0,Math.min(MAP_H-1,cy))};
+}
+
+mapCanvas.addEventListener('mousedown',e=>{
+  painting=true;
+  applyPaint(getCell(e));
+});
+mapCanvas.addEventListener('mousemove',e=>{
+  if(!painting)return;
+  const c=getCell(e);
+  setStatus(`Tile (${c.x}, ${c.y}) — zone: ${currentZone}`);
+  applyPaint(c);
+});
+mapCanvas.addEventListener('mouseup',()=>{painting=false;renderRightPanel();});
+mapCanvas.addEventListener('mouseleave',()=>{painting=false;});
+mapCanvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+function applyPaint({x,y}){
+  if(!currentZone)return;
+  const z=zones[currentZone];
+  if(typeof paintMode==='number'){
+    z.tiles[y*MAP_W+x]=paintMode;
+    renderEditor();
+  } else if(paintMode==='blocked'){
+    z.blocked.add(`${x},${y}`);
+    renderEditor();
+  } else if(paintMode==='unblocked'){
+    z.blocked.delete(`${x},${y}`);
+    renderEditor();
+  } else if(paintMode==='migs'){
+    z.migs={x,y};
+    renderEditor();
+    renderRightPanel();
+    setStatus(`Migs placed at (${x},${y})`);
+  } else if(paintMode==='portal'){
+    // Open modal
+    openPortalModal(x,y);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// Portal modal
+// ─────────────────────────────────────────────────────
+function openPortalModal(x,y){
+  painting=false;
+  pendingPortalTile={x,y};
+  const destSel=document.getElementById('m-dest');
+  destSel.innerHTML=Object.values(zones)
+    .filter(z2=>z2.id!==currentZone)
+    .map(z2=>`<option value="${z2.id}">${z2.name}</option>`)
+    .join('');
+  document.getElementById('m-dx').value=x===0?1:x===MAP_W-1?MAP_W-2:x;
+  document.getElementById('m-dy').value=y===0?1:y===MAP_H-1?MAP_H-2:y;
+  document.getElementById('m-label').value='';
+  document.getElementById('modal-title').textContent=`Place Portal at (${x},${y})`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+document.getElementById('modal-confirm').addEventListener('click',()=>{
+  if(!pendingPortalTile||!currentZone)return;
+  const destZone=document.getElementById('m-dest').value;
+  const destX=parseInt(document.getElementById('m-dx').value)||1;
+  const destY=parseInt(document.getElementById('m-dy').value)||20;
+  const label=document.getElementById('m-label').value.trim()||`${zones[destZone]?.name||destZone} →`;
+  zones[currentZone].portals.push({x:pendingPortalTile.x,y:pendingPortalTile.y,destZone,destX,destY,label});
+  document.getElementById('modal-overlay').classList.remove('open');
+  pendingPortalTile=null;
+  renderEditor();
+  renderRightPanel();
+  setStatus(`Portal added → ${destZone}`);
+});
+document.getElementById('modal-cancel').addEventListener('click',()=>{
+  document.getElementById('modal-overlay').classList.remove('open');
+  pendingPortalTile=null;
+});
+
+// ─────────────────────────────────────────────────────
+// Right panel
+// ─────────────────────────────────────────────────────
+function renderRightPanel(){
+  if(!currentZone){portalList.innerHTML='';migsSection.innerHTML='';return;}
+  const z=zones[currentZone];
+
+  // Portals
+  portalList.innerHTML='';
+  if(z.portals.length===0){
+    portalList.innerHTML='<div style="padding:6px 10px;font-size:11px;color:#475569">No portals yet</div>';
+  } else {
+    z.portals.forEach((p,i)=>{
+      const el=document.createElement('div');el.className='portal-item';
+      const destName=zones[p.destZone]?.name||p.destZone;
+      el.innerHTML=`<span class="pi-label">(${p.x},${p.y})→${destName}</span><button class="del-btn" data-i="${i}">✕</button>`;
+      el.querySelector('.del-btn').addEventListener('click',()=>{
+        z.portals.splice(i,1);
+        renderEditor();
+        renderRightPanel();
+      });
+      portalList.appendChild(el);
+    });
+  }
+
+  // Migs
+  migsSection.innerHTML='';
+  if(z.migs){
+    const el=document.createElement('div');el.className='migs-item';
+    el.innerHTML=`<span style="flex:1">👤 Migs @ (${z.migs.x},${z.migs.y})</span><button class="del-btn" id="rm-migs">✕</button>`;
+    el.querySelector('#rm-migs').addEventListener('click',()=>{
+      z.migs=null;
+      renderEditor();
+      renderRightPanel();
+    });
+    migsSection.appendChild(el);
+  } else {
+    migsSection.innerHTML='<div style="padding:6px 10px;font-size:11px;color:#475569">No Migs (click 👤 Migs then click on map)</div>';
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// Export
+// ─────────────────────────────────────────────────────
+function zoneToJSON(z){
+  return JSON.stringify({
+    w: MAP_W,
+    h: MAP_H,
+    tiles: z.tiles,
+    blocked: [...z.blocked],
+  });
+}
+
+function zonesJS(){
+  const entries=Object.values(zones).map(z=>{
+    const portalsStr=z.portals.map(p=>
+      `      { x:${p.x}, y:${p.y}, destZone:'${p.destZone}', destX:${p.destX}, destY:${p.destY}, label:'${p.label}' }`
+    ).join(',\n');
+    const migsStr=z.migs?`{ x:${z.migs.x}, y:${z.migs.y} }`:'null';
+    return `  ${z.id}: {\n    id:'${z.id}',\n    name:'${z.name}',\n    mapFile:'${z.id}.json',\n    portals:[\n${portalsStr}\n    ],\n    migs:${migsStr},\n    defaultSpawn:{x:${z.migs?z.migs.x:30},y:${z.migs?z.migs.y:20}},\n  }`;
+  }).join(',\n');
+  return `export const ZONES = {\n${entries}\n};\n`;
+}
+
+document.getElementById('export-btn').addEventListener('click',async()=>{
+  // Download each zone JSON
+  for(const z of Object.values(zones)){
+    const blob=new Blob([zoneToJSON(z)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`${z.id}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    await new Promise(r=>setTimeout(r,80));
+  }
+  // Also download zones.js snippet
+  const blob2=new Blob([zonesJS()],{type:'text/javascript'});
+  const a2=document.createElement('a');
+  a2.href=URL.createObjectURL(blob2);
+  a2.download='zones_export.js';
+  a2.click();
+  URL.revokeObjectURL(a2.href);
+  setStatus('All files downloaded!');
+});
+
+document.getElementById('copy-btn').addEventListener('click',()=>{
+  if(!currentZone)return;
+  navigator.clipboard.writeText(zoneToJSON(zones[currentZone]))
+    .then(()=>setStatus('JSON copied to clipboard!'))
+    .catch(()=>{
+      const ta=document.createElement('textarea');
+      ta.value=zoneToJSON(zones[currentZone]);
+      document.body.appendChild(ta);ta.select();
+      document.execCommand('copy');ta.remove();
+      setStatus('JSON copied!');
+    });
+});
+
+// ─────────────────────────────────────────────────────
+// Util
+// ─────────────────────────────────────────────────────
+function setStatus(msg){statusBar.textContent=msg;}
+
+// ─────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────
+loadZones();
+</script>
+</body>
+</html>
