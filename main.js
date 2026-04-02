@@ -13,7 +13,7 @@
     migs:  {bodyColor:0xf59e0b,baseColor:0xfbbf24,labelColor:'#fde68a',scale:1.1},
   };
 
-  // ── Migs spritesheet config (verified via spritemap.html) ──────────────────
+  // ── Migs spritesheet config ────────────────────────────────────────────────
   const MIGS_SHEET = {
     frameWidth: 64, frameHeight: 64, scale: 1.5,
     anims: {
@@ -21,14 +21,17 @@
     },
   };
 
-  // ── Player spritesheet config (verified via spritemap.html) ───────────────
-  // Same sheet dimensions as Migs: 832×3456, 13 cols, 64×64 frames
-  // Isometric direction mapping:
-  //   dx>0 (moving to higher tile X)  → walk_right  (moves screen right-down)
-  //   dx<0 (moving to lower tile X)   → walk_left   (moves screen left-up)
-  //   dy>0 (moving to higher tile Y)  → walk_down   (moves screen left-down)
-  //   dy<0 (moving to lower tile Y)   → walk_up     (moves screen right-up)
-  //   diagonal: whichever axis delta is larger wins
+  // ── Player spritesheet config ──────────────────────────────────────────────
+  // Sheet: 832×3456, 13 cols, 64×64 px per frame
+  //
+  // Isometric visual direction (camera looks SE):
+  //   Tile +X = moves sprite to screen bottom-right  → walk_right
+  //   Tile -X = moves sprite to screen top-left      → walk_left
+  //   Tile +Y = moves sprite to screen bottom-left   → walk_down
+  //   Tile -Y = moves sprite to screen top-right     → walk_up
+  //
+  // For diagonals we compare |dx| vs |dy| with a slight bias toward
+  // left/right (they read more natural in iso) when close.
   const PLAYER_SHEET = {
     frameWidth: 64, frameHeight: 64, scale: 1.5,
     anims: {
@@ -37,10 +40,28 @@
       walk_down:  { frames:[130,131,132,133,134,135,136,137,138], frameRate:9, repeat:-1 },
       walk_right: { frames:[143,144,145,146,147,148,149,150,151], frameRate:9, repeat:-1 },
     },
-    // Fallback idle: first frame of walk_down (just stands still)
-    idleFrame: 130,
+    idleFrames: { down:130, up:104, left:117, right:143 },
   };
-  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Iso direction from full tile-space vector ─────────────────────────────
+  // dx = destTx - srcTx  (positive → moving right on tile grid = screen right-down)
+  // dy = destTy - srcTy  (positive → moving down on tile grid  = screen left-down)
+  //
+  // The 4-quadrant mapping for this SE-facing iso camera:
+  //   dx>0, dy>0 → diagonal right+down  → dominant axis decides
+  //   dx>0, dy<0 → diagonal right+up    → right wins (feels natural)
+  //   dx<0, dy>0 → diagonal left+down   → left wins  (feels natural)
+  //   dx<0, dy<0 → diagonal left+up     → dominant axis decides
+  //
+  // A 1.25× horizontal bias makes pure-axis moves resolve cleanly.
+  function isoDir(dx, dy) {
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+    // Weight x-axis slightly so horizontal iso movement feels right
+    const wx = Math.abs(dx) * 1.25;
+    const wy = Math.abs(dy);
+    if (wx >= wy) return dx > 0 ? 'right' : 'left';
+    return dy > 0 ? 'down' : 'up';
+  }
 
   const STATE = {
     you:null,
@@ -72,22 +93,6 @@
   function screenToTile(sx,sy){const x=sx-STATE.origin.x,y=sy-STATE.origin.y;return{tx:(y/(ISO_H/2)+x/(ISO_W/2))/2,ty:(y/(ISO_H/2)-x/(ISO_W/2))/2};}
   function clampTile(tx,ty){return{tx:Math.max(0,Math.min(STATE.map.w-1,tx)),ty:Math.max(0,Math.min(STATE.map.h-1,ty))};}
   function getTile(x,y){if(!STATE.map.tiles)return 0;return STATE.map.tiles[y*STATE.map.w+x]??0;}
-
-  // ── Iso walk direction from tile deltas ───────────────────────────────────
-  // dx = tx - rx (target minus current rendered position)
-  // dy = ty - ry
-  // On an iso grid:
-  //   +dx alone  = moving northeast screen = walk_right
-  //   -dx alone  = moving southwest screen = walk_left
-  //   +dy alone  = moving southeast screen = walk_down
-  //   -dy alone  = moving northwest screen = walk_up
-  // For diagonals the dominant axis wins.
-  function isoDirection(dx, dy) {
-    const adx = Math.abs(dx), ady = Math.abs(dy);
-    if (adx < 0.001 && ady < 0.001) return null; // standing still
-    if (adx >= ady) return dx > 0 ? 'right' : 'left';
-    return dy > 0 ? 'down' : 'up';
-  }
 
   const STAT_NAMES=[{key:'str',label:'STR'},{key:'agi',label:'AGI'},{key:'vit',label:'VIT'},{key:'int',label:'INT'},{key:'dex',label:'DEX'},{key:'luk',label:'LUK'}];
   function statCost(v){return Math.floor(v/10)+2;}
@@ -185,16 +190,14 @@
     el.textContent='📍 '+zoneName;
   }
 
-  // ── Register all player walk animations (idempotent) ──────────────────────
+  // ── Register all player walk animations once ───────────────────────────────
   function ensurePlayerAnims(scene) {
-    const KEY = 'player-sheet';
-    const cfg = PLAYER_SHEET;
-    for (const [animName, def] of Object.entries(cfg.anims)) {
+    for (const [animName, def] of Object.entries(PLAYER_SHEET.anims)) {
       const key = `player-${animName}`;
       if (!scene.anims.exists(key)) {
         scene.anims.create({
           key,
-          frames: scene.anims.generateFrameNumbers(KEY, { frames: def.frames }),
+          frames: scene.anims.generateFrameNumbers('player-sheet', { frames: def.frames }),
           frameRate: def.frameRate,
           repeat: def.repeat,
         });
@@ -202,24 +205,21 @@
     }
   }
 
-  // ── Build one player entity ───────────────────────────────────────────────
+  // ── Create a player entity ─────────────────────────────────────────────────
   function upsertPlayer(scene, id, tx, ty, name, level) {
     let p = STATE.players.get(id);
     if (!p) {
       const isLocal = id === STATE.you;
-      const KEY = 'player-sheet';
-      const cfg = PLAYER_SHEET;
 
-      if (scene.textures.exists(KEY)) {
-        // ── Sprite-based player ──
+      if (scene.textures.exists('player-sheet')) {
         ensurePlayerAnims(scene);
 
-        const spr = scene.add.sprite(0, 0, KEY);
-        spr.setScale(cfg.scale);
-        spr.setOrigin(0.5, 1);           // feet anchor
-        spr.setFrame(cfg.idleFrame);     // stand still on spawn
+        const spr = scene.add.sprite(0, 0, 'player-sheet');
+        spr.setScale(PLAYER_SHEET.scale);
+        spr.setOrigin(0.5, 1);
+        spr.setFrame(PLAYER_SHEET.idleFrames.down);
 
-        const sprH = cfg.frameHeight * cfg.scale;
+        const sprH = PLAYER_SHEET.frameHeight * PLAYER_SHEET.scale;
         const label = scene.add.text(0, -sprH - 2, name || id, {
           fontSize:'11px', fontFamily:'system-ui,sans-serif',
           color: isLocal ? '#a3e635' : '#e2e8f0',
@@ -231,76 +231,63 @@
           color:'#a3e635', stroke:'#0b1020', strokeThickness:2, resolution:2,
         }).setOrigin(0.5, 1);
 
-        // Subtle highlight ring for the local player
-        const ring = isLocal
-          ? scene.add.ellipse(0, 0, 22, 10, 0xa3e635, 0.25)
-          : null;
-
-        const children = ring
-          ? [ring, spr, label, lvlTag]
-          : [spr, label, lvlTag];
-
+        const ring = isLocal ? scene.add.ellipse(0, 0, 22, 10, 0xa3e635, 0.25) : null;
+        const children = ring ? [ring, spr, label, lvlTag] : [spr, label, lvlTag];
         const container = scene.add.container(0, 0, children);
-        p = { id, tx, ty, rx:tx, ry:ty, sprite:container, label, lvlTag,
-              body:spr, useSprite:true, facing:'down', moving:false };
+
+        p = {
+          id, tx, ty, rx:tx, ry:ty,
+          // destTx/destTy = the tile we're currently walking TOWARD
+          // Updated whenever the server sends a new position.
+          // Used for direction — avoids the noisy per-frame delta approach.
+          destTx:tx, destTy:ty,
+          sprite:container, label, lvlTag, body:spr,
+          useSprite:true, facing:'down', moving:false,
+        };
       } else {
-        // ── Shape fallback (player-sheet not yet loaded) ──
+        // shape fallback
         const color = isLocal ? 0xa3e635 : 0x7dd3fc;
         const base  = scene.add.ellipse(0,0,18,10,color).setOrigin(0.5,0.5);
         const body  = scene.add.rectangle(0,0,10,16,color).setOrigin(0.5,1);
         const label = scene.add.text(0,-24,name||id,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#e2e8f0',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
         const lvlTag= scene.add.text(0,-36,`Lv${level||1}`,{fontSize:'9px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#0b1020',strokeThickness:2,resolution:2}).setOrigin(0.5,1);
         const container=scene.add.container(0,0,[body,base,label,lvlTag]);
-        p={id,tx,ty,rx:tx,ry:ty,sprite:container,label,lvlTag,body,useSprite:false,facing:'down',moving:false};
+        p={id,tx,ty,rx:tx,ry:ty,destTx:tx,destTy:ty,sprite:container,label,lvlTag,body,useSprite:false,facing:'down',moving:false};
       }
       STATE.players.set(id, p);
     } else {
+      // Server gave us a new destination — update facing direction NOW
+      // so the animation switches immediately rather than waiting for
+      // the lerp to build up a delta.
+      if (p.useSprite) {
+        const ddx = tx - p.destTx;
+        const ddy = ty - p.destTy;
+        const newDir = isoDir(ddx, ddy);
+        if (newDir) {
+          p.facing = newDir;
+          if (!p.moving || p.body.anims.currentAnim?.key !== `player-walk_${newDir}`) {
+            p.body.play(`player-walk_${newDir}`, true);
+            p.moving = true;
+          }
+        }
+      }
       if (name && p.label)  p.label.setText(name);
       if (level && p.lvlTag) p.lvlTag.setText(`Lv${level}`);
+      p.destTx = tx;
+      p.destTy = ty;
     }
     p.tx = tx; p.ty = ty;
   }
 
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
 
-  // setPlayerVisual now only used for shape-based fallback players
   function setPlayerVisual(p){
-    if (p.useSprite) return; // sprite players manage their own tint
+    if (p.useSprite) return;
     const isYou=p.id===STATE.you;
     const color=isYou?0xa3e635:0x7dd3fc;
     p.sprite.list[0].fillColor=color;
     p.sprite.list[1].fillColor=color;
     if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');
-  }
-
-  // ── Update walk animation for a sprite-based player ──────────────────────
-  function updatePlayerAnim(p, dx, dy) {
-    if (!p.useSprite) return;
-    const dir = isoDirection(dx, dy);
-    const isMoving = dir !== null;
-
-    if (isMoving) {
-      const animKey = `player-walk_${dir}`;
-      // Only switch if direction changed or was idle
-      if (!p.moving || p.facing !== dir) {
-        p.body.play(animKey, true);
-        p.facing  = dir;
-        p.moving  = true;
-      }
-    } else {
-      if (p.moving) {
-        // Arrived — freeze on idle frame for current facing
-        const idleFrames = {
-          down:  PLAYER_SHEET.anims.walk_down.frames[0],
-          up:    PLAYER_SHEET.anims.walk_up.frames[0],
-          left:  PLAYER_SHEET.anims.walk_left.frames[0],
-          right: PLAYER_SHEET.anims.walk_right.frames[0],
-        };
-        p.body.stop();
-        p.body.setFrame(idleFrames[p.facing] ?? PLAYER_SHEET.idleFrame);
-        p.moving = false;
-      }
-    }
   }
 
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
@@ -411,11 +398,9 @@
     constructor(){super('main');}
 
     preload(){
-      // Migs NPC spritesheet
       this.load.spritesheet('migs-sheet', '/secretsoflerma/assets/migs.png', {
         frameWidth: MIGS_SHEET.frameWidth, frameHeight: MIGS_SHEET.frameHeight,
       });
-      // Player character spritesheet
       this.load.spritesheet('player-sheet', '/secretsoflerma/assets/player.png', {
         frameWidth: PLAYER_SHEET.frameWidth, frameHeight: PLAYER_SHEET.frameHeight,
       });
@@ -555,7 +540,7 @@
       if(msg.t==='NPC_HIT'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
         n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);
-        if(n.hpFill&&n.hpFill.width!==undefined&&n.hpFill.x!==undefined){n.hpFill.width=30*pct;n.hpFill.x=-15;}
+        if(n.hpFill&&n.hpFill.width!==undefined){n.hpFill.width=30*pct;n.hpFill.x=-15;}
         if(n.body&&n.body.setTintFill)n.body.setTintFill(0xff0000);
         else if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xff0000);
         setTimeout(()=>{
@@ -614,20 +599,40 @@
     }
 
     update(_, dtMs){
-      const dt = dtMs / 1000, FOLLOW = 16;
+      const dt = dtMs / 1000;
+      // Softer follow factor → smoother glide between server ticks
+      const FOLLOW = 8;
+      // Threshold below which we consider the player "arrived"
+      const ARRIVE = 0.04;
 
       for (const p of STATE.players.values()) {
-        const prevRx = p.rx, prevRy = p.ry;
         p.rx += (p.tx - p.rx) * Math.min(1, FOLLOW * dt);
         p.ry += (p.ty - p.ry) * Math.min(1, FOLLOW * dt);
         const s = tileToScreen(p.rx, p.ry);
         p.sprite.x = s.x; p.sprite.y = s.y - 6;
         setDepth(p, false);
 
-        // Drive walk animation from the movement delta this frame
-        const dx = p.tx - prevRx;
-        const dy = p.ty - prevRy;
-        updatePlayerAnim(p, dx, dy);
+        if (p.useSprite) {
+          // Still has meaningful distance left to travel → keep walking
+          const distX = p.tx - p.rx;
+          const distY = p.ty - p.ry;
+          const arrived = Math.abs(distX) < ARRIVE && Math.abs(distY) < ARRIVE;
+
+          if (!arrived) {
+            // Drive direction from remaining distance (smooth, stable)
+            const dir = isoDir(distX, distY);
+            if (dir && (!p.moving || p.facing !== dir)) {
+              p.body.play(`player-walk_${dir}`, true);
+              p.facing = dir;
+              p.moving = true;
+            }
+          } else if (p.moving) {
+            // Truly arrived — freeze on idle stance
+            p.body.stop();
+            p.body.setFrame(PLAYER_SHEET.idleFrames[p.facing] ?? PLAYER_SHEET.idleFrames.down);
+            p.moving = false;
+          }
+        }
       }
 
       for(const n of STATE.npcs.values()){
