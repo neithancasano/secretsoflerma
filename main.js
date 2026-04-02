@@ -13,6 +13,13 @@
     migs:  {bodyColor:0xf59e0b,baseColor:0xfbbf24,labelColor:'#fde68a',scale:1.1},
   };
 
+  // Exported frame indices from Sprite Mapper (used for timing + future spritesheet playback).
+  const PLAYER_ANIM_MAP = {
+    walk:{up:[104,105,106,107,108,109,110,111,112],down:[130,131,132,133,134,135,136,137,138],left:[117,118,119,120,121,122,123,124,125],right:[143,144,145,146,147,148,149,150,151]},
+    slash:{up:[156,157,158,159,160,161],down:[182,183,184,185,186,187],left:[169,170,171,172,173,174],right:[195,196,197,198,199,200]},
+  };
+  const ATTACK_FRAME_MS = 70;
+
   const STATE = {
     you:null,
     map:{w:60,h:40,tiles:null},
@@ -43,6 +50,7 @@
   function screenToTile(sx,sy){const x=sx-STATE.origin.x,y=sy-STATE.origin.y;return{tx:(y/(ISO_H/2)+x/(ISO_W/2))/2,ty:(y/(ISO_H/2)-x/(ISO_W/2))/2};}
   function clampTile(tx,ty){return{tx:Math.max(0,Math.min(STATE.map.w-1,tx)),ty:Math.max(0,Math.min(STATE.map.h-1,ty))};}
   function getTile(x,y){if(!STATE.map.tiles)return 0;return STATE.map.tiles[y*STATE.map.w+x]??0;}
+  function facingFromDelta(dx,dy){return Math.abs(dx)>Math.abs(dy)?(dx>=0?'right':'left'):(dy>=0?'down':'up');}
 
   const STAT_NAMES=[{key:'str',label:'STR'},{key:'agi',label:'AGI'},{key:'vit',label:'VIT'},{key:'int',label:'INT'},{key:'dex',label:'DEX'},{key:'luk',label:'LUK'}];
   function statCost(v){return Math.floor(v/10)+2;}
@@ -189,7 +197,7 @@
           scene.net.send({t:'TALK_NPC',npcId:id});
         } else {
           STATE.attackTarget=id;
-          scene.net.send({t:'ATTACK_NPC',npcId:id});
+          playLocalAttack(scene,id,n.tx,n.ty);
           body.setStrokeStyle(2,0xffff00);
         }
       });
@@ -215,6 +223,45 @@
   function clearAllPlayers(){for(const p of STATE.players.values())p.sprite.destroy();STATE.players.clear();}
 
   function setDepth(e,isNpc){e.sprite.setDepth((e.ty+e.tx)*10+(isNpc?4:5));}
+
+  function playSlashFx(scene,source,dir){
+    const slash=scene.add.ellipse(source.x,source.y-14,22,10,0xffffff,0.15).setStrokeStyle(2,0xffffff,0.85).setDepth(9998);
+    const cfg={
+      up:{dx:0,dy:-18,angle:-90},
+      down:{dx:0,dy:14,angle:90},
+      left:{dx:-20,dy:-2,angle:180},
+      right:{dx:20,dy:-2,angle:0},
+    }[dir]||{dx:0,dy:-18,angle:-90};
+    slash.setAngle(cfg.angle);
+    scene.tweens.add({
+      targets:slash,x:slash.x+cfg.dx,y:slash.y+cfg.dy,scaleX:2.4,scaleY:1.5,alpha:0,duration:180,ease:'Cubic.easeOut',
+      onComplete:()=>slash.destroy()
+    });
+  }
+
+  function playLocalAttack(scene,npcId,targetTx,targetTy){
+    const me=STATE.players.get(STATE.you);
+    if(!me){scene.net.send({t:'ATTACK_NPC',npcId});return;}
+    if(me.attackAnimBusy)return;
+    const dir=facingFromDelta(targetTx-me.rx,targetTy-me.ry);
+    const slashFrames=PLAYER_ANIM_MAP.slash[dir]||PLAYER_ANIM_MAP.slash.down;
+    const totalMs=slashFrames.length*ATTACK_FRAME_MS;
+    const hitAtMs=Math.floor(totalMs*0.55);
+    me.attackAnimBusy=true;
+    me.facing=dir;
+
+    scene.tweens.add({targets:me.body,angle:dir==='left'?-12:dir==='right'?12:0,scaleY:0.85,duration:hitAtMs,ease:'Sine.easeInOut',yoyo:true});
+    scene.time.delayedCall(hitAtMs,()=>{
+      scene.net.send({t:'ATTACK_NPC',npcId});
+      playSlashFx(scene,me.sprite,dir);
+      if(me.body)me.body.setFillStyle(0xfff59d);
+    });
+    scene.time.delayedCall(totalMs,()=>{
+      me.attackAnimBusy=false;
+      setPlayerVisual(me);
+      if(me.body){me.body.angle=0;me.body.setScale(1,1);}
+    });
+  }
 
   function spawnDmgNumber(scene,worldX,worldY,dmg,color,isCrit){
     const txt=scene.add.text(worldX,worldY-20,isCrit?`★${dmg}`:`-${dmg}`,{fontSize:isCrit?'18px':'14px',fontFamily:'system-ui,sans-serif',color:color||'#ff4444',stroke:'#000',strokeThickness:3,fontStyle:'bold',resolution:2}).setOrigin(0.5,1).setDepth(9999);
@@ -247,6 +294,8 @@
       this.scale.resize(window.innerWidth,window.innerHeight);
       window.addEventListener('resize',()=>{this.scale.resize(window.innerWidth,window.innerHeight);this.recomputeOrigin();this.drawTileMap();});
       this.tileGraphics=this.add.graphics();
+      this.portalEffects=[];
+      this.createPortalParticleTexture();
       this.recomputeOrigin();
       this.net=window.LERMA_NET.connect((msg)=>this.onNet(msg));
 
@@ -289,11 +338,54 @@
           g.lineStyle(1,colors.stroke,0.6);g.strokePoints([top,right,bottom,left,top],false);
         }
       }
+      this.refreshPortalEffects();
+    }
+
+    createPortalParticleTexture(){
+      if(this.textures.exists('portal-particle'))return;
+      const dot=this.make.graphics({x:0,y:0,add:false});
+      dot.fillStyle(0xffffff,1);
+      dot.fillCircle(4,4,4);
+      dot.generateTexture('portal-particle',8,8);
+      dot.destroy();
+    }
+
+    clearPortalEffects(){
+      for(const fx of this.portalEffects){
+        fx.glow.destroy();
+        fx.outerRing.destroy();
+        fx.innerRing.destroy();
+        fx.particles.destroy();
+      }
+      this.portalEffects.length=0;
+    }
+
+    refreshPortalEffects(){
+      this.clearPortalEffects();
       for(const portal of STATE.portals){
         const c=tileToScreen(portal.x,portal.y);
-        const g2=this.tileGraphics;
-        g2.fillStyle(0xa3e635,0.5);
-        g2.fillPoints([{x:c.x,y:c.y-ISO_H/2},{x:c.x+ISO_W/2,y:c.y},{x:c.x,y:c.y+ISO_H/2},{x:c.x-ISO_W/2,y:c.y}],true);
+        const glow=this.add.ellipse(c.x,c.y+4,ISO_W*0.9,ISO_H*0.56,0x5BFF8B,0.25).setDepth(1);
+        const outerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.8,ISO_H*0.42).setStrokeStyle(2,0xB6FF77,0.9).setDepth(2);
+        const innerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.56,ISO_H*0.26).setStrokeStyle(2,0xE6FFB2,0.9).setDepth(2);
+        const particles=this.add.particles(c.x,c.y-6,'portal-particle',{
+          x:{min:-ISO_W*0.22,max:ISO_W*0.22},
+          y:{min:-ISO_H*0.14,max:ISO_H*0.14},
+          speedY:{min:-45,max:-12},
+          speedX:{min:-14,max:14},
+          scale:{start:0.75,end:0},
+          alpha:{start:0.95,end:0},
+          tint:[0x76FF91,0xB8FF96,0xE8FFC4],
+          lifespan:{min:600,max:1100},
+          frequency:34,
+          blendMode:'ADD',
+          rotate:{min:0,max:360},
+        }).setDepth(3);
+
+        this.tweens.add({targets:outerRing,angle:360,duration:2200,ease:'Linear',repeat:-1});
+        this.tweens.add({targets:innerRing,angle:-360,duration:1700,ease:'Linear',repeat:-1});
+        this.tweens.add({targets:glow,alpha:{from:0.15,to:0.42},duration:900,yoyo:true,ease:'Sine.easeInOut',repeat:-1});
+
+        this.portalEffects.push({glow,outerRing,innerRing,particles});
       }
     }
 
