@@ -13,55 +13,12 @@
     migs:  {bodyColor:0xf59e0b,baseColor:0xfbbf24,labelColor:'#fde68a',scale:1.1},
   };
 
-  // ── Migs spritesheet config ────────────────────────────────────────────────
-  const MIGS_SHEET = {
-    frameWidth: 64, frameHeight: 64, scale: 1.5,
-    anims: {
-      idle_down: { frames: [312, 313], frameRate: 4, repeat: -1 },
-    },
+  // Exported frame indices from Sprite Mapper (used for timing + future spritesheet playback).
+  const PLAYER_ANIM_MAP = {
+    walk:{up:[104,105,106,107,108,109,110,111,112],down:[130,131,132,133,134,135,136,137,138],left:[117,118,119,120,121,122,123,124,125],right:[143,144,145,146,147,148,149,150,151]},
+    slash:{up:[156,157,158,159,160,161],down:[182,183,184,185,186,187],left:[169,170,171,172,173,174],right:[195,196,197,198,199,200]},
   };
-
-  // ── Player spritesheet config ──────────────────────────────────────────────
-  // Sheet: 832×3456, 13 cols, 64×64 px per frame
-  //
-  // Isometric visual direction (camera looks SE):
-  //   Tile +X = moves sprite to screen bottom-right  → walk_right
-  //   Tile -X = moves sprite to screen top-left      → walk_left
-  //   Tile +Y = moves sprite to screen bottom-left   → walk_down
-  //   Tile -Y = moves sprite to screen top-right     → walk_up
-  //
-  // For diagonals we compare |dx| vs |dy| with a slight bias toward
-  // left/right (they read more natural in iso) when close.
-  const PLAYER_SHEET = {
-    frameWidth: 64, frameHeight: 64, scale: 1.5,
-    anims: {
-      walk_up:    { frames:[104,105,106,107,108,109,110,111,112], frameRate:9, repeat:-1 },
-      walk_left:  { frames:[117,118,119,120,121,122,123,124,125], frameRate:9, repeat:-1 },
-      walk_down:  { frames:[130,131,132,133,134,135,136,137,138], frameRate:9, repeat:-1 },
-      walk_right: { frames:[143,144,145,146,147,148,149,150,151], frameRate:9, repeat:-1 },
-    },
-    idleFrames: { down:130, up:104, left:117, right:143 },
-  };
-
-  // ── Iso direction from full tile-space vector ─────────────────────────────
-  // dx = destTx - srcTx  (positive → moving right on tile grid = screen right-down)
-  // dy = destTy - srcTy  (positive → moving down on tile grid  = screen left-down)
-  //
-  // The 4-quadrant mapping for this SE-facing iso camera:
-  //   dx>0, dy>0 → diagonal right+down  → dominant axis decides
-  //   dx>0, dy<0 → diagonal right+up    → right wins (feels natural)
-  //   dx<0, dy>0 → diagonal left+down   → left wins  (feels natural)
-  //   dx<0, dy<0 → diagonal left+up     → dominant axis decides
-  //
-  // A 1.25× horizontal bias makes pure-axis moves resolve cleanly.
-  function isoDir(dx, dy) {
-    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
-    // Weight x-axis slightly so horizontal iso movement feels right
-    const wx = Math.abs(dx) * 1.25;
-    const wy = Math.abs(dy);
-    if (wx >= wy) return dx > 0 ? 'right' : 'left';
-    return dy > 0 ? 'down' : 'up';
-  }
+  const ATTACK_FRAME_MS = 70;
 
   const STATE = {
     you:null,
@@ -93,6 +50,7 @@
   function screenToTile(sx,sy){const x=sx-STATE.origin.x,y=sy-STATE.origin.y;return{tx:(y/(ISO_H/2)+x/(ISO_W/2))/2,ty:(y/(ISO_H/2)-x/(ISO_W/2))/2};}
   function clampTile(tx,ty){return{tx:Math.max(0,Math.min(STATE.map.w-1,tx)),ty:Math.max(0,Math.min(STATE.map.h-1,ty))};}
   function getTile(x,y){if(!STATE.map.tiles)return 0;return STATE.map.tiles[y*STATE.map.w+x]??0;}
+  function facingFromDelta(dx,dy){return Math.abs(dx)>Math.abs(dy)?(dx>=0?'right':'left'):(dy>=0?'down':'up');}
 
   const STAT_NAMES=[{key:'str',label:'STR'},{key:'agi',label:'AGI'},{key:'vit',label:'VIT'},{key:'int',label:'INT'},{key:'dex',label:'DEX'},{key:'luk',label:'LUK'}];
   function statCost(v){return Math.floor(v/10)+2;}
@@ -345,7 +303,7 @@
           scene.net.send({t:'TALK_NPC',npcId:id});
         } else {
           STATE.attackTarget=id;
-          scene.net.send({t:'ATTACK_NPC',npcId:id});
+          playLocalAttack(scene,id,n.tx,n.ty);
           body.setStrokeStyle(2,0xffff00);
         }
       });
@@ -371,6 +329,45 @@
   function clearAllPlayers(){for(const p of STATE.players.values())p.sprite.destroy();STATE.players.clear();}
 
   function setDepth(e,isNpc){e.sprite.setDepth((e.ty+e.tx)*10+(isNpc?4:5));}
+
+  function playSlashFx(scene,source,dir){
+    const slash=scene.add.ellipse(source.x,source.y-14,22,10,0xffffff,0.15).setStrokeStyle(2,0xffffff,0.85).setDepth(9998);
+    const cfg={
+      up:{dx:0,dy:-18,angle:-90},
+      down:{dx:0,dy:14,angle:90},
+      left:{dx:-20,dy:-2,angle:180},
+      right:{dx:20,dy:-2,angle:0},
+    }[dir]||{dx:0,dy:-18,angle:-90};
+    slash.setAngle(cfg.angle);
+    scene.tweens.add({
+      targets:slash,x:slash.x+cfg.dx,y:slash.y+cfg.dy,scaleX:2.4,scaleY:1.5,alpha:0,duration:180,ease:'Cubic.easeOut',
+      onComplete:()=>slash.destroy()
+    });
+  }
+
+  function playLocalAttack(scene,npcId,targetTx,targetTy){
+    const me=STATE.players.get(STATE.you);
+    if(!me){scene.net.send({t:'ATTACK_NPC',npcId});return;}
+    if(me.attackAnimBusy)return;
+    const dir=facingFromDelta(targetTx-me.rx,targetTy-me.ry);
+    const slashFrames=PLAYER_ANIM_MAP.slash[dir]||PLAYER_ANIM_MAP.slash.down;
+    const totalMs=slashFrames.length*ATTACK_FRAME_MS;
+    const hitAtMs=Math.floor(totalMs*0.55);
+    me.attackAnimBusy=true;
+    me.facing=dir;
+
+    scene.tweens.add({targets:me.body,angle:dir==='left'?-12:dir==='right'?12:0,scaleY:0.85,duration:hitAtMs,ease:'Sine.easeInOut',yoyo:true});
+    scene.time.delayedCall(hitAtMs,()=>{
+      scene.net.send({t:'ATTACK_NPC',npcId});
+      playSlashFx(scene,me.sprite,dir);
+      if(me.body)me.body.setFillStyle(0xfff59d);
+    });
+    scene.time.delayedCall(totalMs,()=>{
+      me.attackAnimBusy=false;
+      setPlayerVisual(me);
+      if(me.body){me.body.angle=0;me.body.setScale(1,1);}
+    });
+  }
 
   function spawnDmgNumber(scene,worldX,worldY,dmg,color,isCrit){
     const txt=scene.add.text(worldX,worldY-20,isCrit?`★${dmg}`:`-${dmg}`,{fontSize:isCrit?'18px':'14px',fontFamily:'system-ui,sans-serif',color:color||'#ff4444',stroke:'#000',strokeThickness:3,fontStyle:'bold',resolution:2}).setOrigin(0.5,1).setDepth(9999);
@@ -473,7 +470,10 @@
 
     clearPortalEffects(){
       for(const fx of this.portalEffects){
-        fx.glow.destroy();fx.outerRing.destroy();fx.innerRing.destroy();fx.particles.destroy();
+        fx.glow.destroy();
+        fx.outerRing.destroy();
+        fx.innerRing.destroy();
+        fx.particles.destroy();
       }
       this.portalEffects.length=0;
     }
@@ -486,15 +486,23 @@
         const outerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.8,ISO_H*0.42).setStrokeStyle(2,0xB6FF77,0.9).setDepth(2);
         const innerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.56,ISO_H*0.26).setStrokeStyle(2,0xE6FFB2,0.9).setDepth(2);
         const particles=this.add.particles(c.x,c.y-6,'portal-particle',{
-          x:{min:-ISO_W*0.22,max:ISO_W*0.22},y:{min:-ISO_H*0.14,max:ISO_H*0.14},
-          speedY:{min:-45,max:-12},speedX:{min:-14,max:14},
-          scale:{start:0.75,end:0},alpha:{start:0.95,end:0},
-          tint:[0x76FF91,0xB8FF96,0xE8FFC4],lifespan:{min:600,max:1100},
-          frequency:34,blendMode:'ADD',rotate:{min:0,max:360},
+          x:{min:-ISO_W*0.22,max:ISO_W*0.22},
+          y:{min:-ISO_H*0.14,max:ISO_H*0.14},
+          speedY:{min:-45,max:-12},
+          speedX:{min:-14,max:14},
+          scale:{start:0.75,end:0},
+          alpha:{start:0.95,end:0},
+          tint:[0x76FF91,0xB8FF96,0xE8FFC4],
+          lifespan:{min:600,max:1100},
+          frequency:34,
+          blendMode:'ADD',
+          rotate:{min:0,max:360},
         }).setDepth(3);
+
         this.tweens.add({targets:outerRing,angle:360,duration:2200,ease:'Linear',repeat:-1});
         this.tweens.add({targets:innerRing,angle:-360,duration:1700,ease:'Linear',repeat:-1});
         this.tweens.add({targets:glow,alpha:{from:0.15,to:0.42},duration:900,yoyo:true,ease:'Sine.easeInOut',repeat:-1});
+
         this.portalEffects.push({glow,outerRing,innerRing,particles});
       }
     }
