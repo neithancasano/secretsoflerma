@@ -26,6 +26,17 @@
     migsOpen:false,
   };
 
+  // Inject a CSS rule for the chat bubble cursor once
+  (function injectChatCursor(){
+    if(document.getElementById('migs-cursor-style'))return;
+    const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><text y='26' font-size='26'>💬</text></svg>`;
+    const encoded=encodeURIComponent(svg);
+    const style=document.createElement('style');
+    style.id='migs-cursor-style';
+    style.textContent=`.migs-hover-cursor{cursor:url("data:image/svg+xml,${encoded}") 0 32,pointer!important;}`;
+    document.head.appendChild(style);
+  })();
+
   let lastSaveAt=0;
   function maybeSavePos(x,y){const now=Date.now();if(now-lastSaveAt<2000)return;lastSaveAt=now;if(window.LERMA_SAVE_POS)window.LERMA_SAVE_POS(x,y,STATE.zoneId);}
 
@@ -164,6 +175,7 @@
     let n=STATE.npcs.get(id);
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
     const s=vis.scale||1;
+    const isMigs=kind==='migs';
     if(!n){
       const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
       const body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
@@ -172,14 +184,28 @@
       const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
       const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
       const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+
+      // HP bar: hidden for Migs, visible for enemies
       const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
       const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
-      const container=scene.add.container(0,0,[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label]);
-      container.setSize(30,30);container.setInteractive();
+      if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
+
+      // Chat bubble indicator above Migs name
+      const chatBubble=isMigs
+        ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
+        : null;
+
+      const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
+      if(chatBubble)children.push(chatBubble);
+
+      const container=scene.add.container(0,0,children);
+      // Larger hit area for easier clicking, especially Migs
+      container.setSize(isMigs?48:30,isMigs?48:30);
+      container.setInteractive();
+
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
-        if(kind==='migs'){
-          // Talk to Migs
+        if(isMigs){
           scene.net.send({t:'TALK_NPC',npcId:id});
         } else {
           STATE.attackTarget=id;
@@ -187,12 +213,24 @@
           body.setStrokeStyle(2,0xffff00);
         }
       });
-      container.on('pointerover',()=>scene.input.setDefaultCursor(kind==='migs'?'pointer':'crosshair'));
-      container.on('pointerout',()=>scene.input.setDefaultCursor('default'));
+
+      container.on('pointerover',()=>{
+        if(isMigs){
+          // Use the CSS class for the emoji cursor
+          scene.game.canvas.classList.add('migs-hover-cursor');
+        } else {
+          scene.input.setDefaultCursor('crosshair');
+        }
+      });
+      container.on('pointerout',()=>{
+        scene.game.canvas.classList.remove('migs-hover-cursor');
+        scene.input.setDefaultCursor('default');
+      });
+
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
-    if(hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
+    if(!isMigs&&hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
     n.tx=tx;n.ty=ty;
   }
   function removeNPC(id){const n=STATE.npcs.get(id);if(!n)return;n.sprite.destroy();STATE.npcs.delete(id);if(STATE.attackTarget===id)STATE.attackTarget=null;}
