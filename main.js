@@ -159,89 +159,30 @@
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
   function setPlayerVisual(p){const isYou=p.id===STATE.you;const color=isYou?0xa3e635:0x7dd3fc;p.sprite.list[0].fillColor=color;p.sprite.list[1].fillColor=color;if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');}
 
-  // ── LPC spritesheet constants for Migs ──────────────────────────────────────
-  // Sheet: 64×64 px per frame, 7 cols wide, 31 rows tall
-  // Row 23 (0-indexed) = idle facing down (south) — 2 frames
-  const MIGS_FRAME_W = 64;
-  const MIGS_FRAME_H = 64;
-  const MIGS_IDLE_ROW = 23;          // idle-down row in the expanded LPC layout
-  const MIGS_IDLE_FRAMES = 2;        // LPC idle has 2 frames per direction
-  const MIGS_SCALE = 1.5;            // display scale so he's visible on the iso map
-  // ────────────────────────────────────────────────────────────────────────────
-
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
     let n=STATE.npcs.get(id);
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
     const s=vis.scale||1;
     const isMigs=kind==='migs';
-
     if(!n){
-      let container, label, hpFill, body;
-
-      if(isMigs){
-        // ── Migs: sprite-based with LPC idle animation ──
-        const spriteKey='migs-sheet';
-
-        // Register idle-down animation once (idempotent)
-        if(!scene.anims.exists('migs-idle')){
-          // Build frame array from the row: row 23, columns 0..1
-          const frames=[];
-          for(let f=0;f<MIGS_IDLE_FRAMES;f++){
-            frames.push({
-              frame: MIGS_IDLE_ROW * 7 + f   // Phaser numbers frames left-to-right, top-to-bottom
-            });
-          }
-          scene.anims.create({
-            key:'migs-idle',
-            frames: scene.anims.generateFrameNumbers(spriteKey,{frames:frames.map(f=>f.frame)}),
-            frameRate:4,   // slow gentle idle bob
-            repeat:-1,
-          });
-        }
-
-        const migSprite=scene.add.sprite(0,0,spriteKey);
-        migSprite.setScale(MIGS_SCALE);
-        migSprite.setOrigin(0.5,1);       // anchor at feet
-        migSprite.play('migs-idle');
-
-        // Name label above sprite
-        label=scene.add.text(0,-MIGS_FRAME_H*MIGS_SCALE-4,name||'Migs',{
-          fontSize:'10px',fontFamily:'system-ui,sans-serif',
-          color:'#fde68a',stroke:'#0b1020',strokeThickness:3,resolution:2
-        }).setOrigin(0.5,1);
-
-        // Chat bubble emoji
-        const chatBubble=scene.add.text(0,-MIGS_FRAME_H*MIGS_SCALE-18,'💬',{
-          fontSize:'13px',resolution:2
-        }).setOrigin(0.5,1);
-
-        container=scene.add.container(0,0,[migSprite,label,chatBubble]);
-        container.setSize(MIGS_FRAME_W*MIGS_SCALE, MIGS_FRAME_H*MIGS_SCALE);
-        container.setInteractive();
-
-        // We store migSprite as `body` so the hit-flash code has a reference
-        body=migSprite;
-        // hpFill is unused for Migs but we give it a dummy so downstream code is happy
-        hpFill={width:0,x:0};
-
-      } else {
-        // ── Other NPCs: original shape-based rendering ──
-        const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
-        body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
-        const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
-        const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
-        const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
-        const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
-        label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-        const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
-        hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
-        const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
-        container=scene.add.container(0,0,children);
-        container.setSize(30,30);
-        container.setInteractive();
-      }
-
-      // ── Shared interaction handlers ──
+      const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
+      const body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
+      const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
+      const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
+      const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
+      const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
+      const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+      const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
+      const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
+      if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
+      const chatBubble=isMigs
+        ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
+        : null;
+      const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
+      if(chatBubble)children.push(chatBubble);
+      const container=scene.add.container(0,0,children);
+      container.setSize(isMigs?48:30,isMigs?48:30);
+      container.setInteractive();
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -263,11 +204,9 @@
         scene.game.canvas.classList.remove('migs-hover-cursor');
         scene.input.setDefaultCursor('default');
       });
-
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
-
     if(!isMigs&&hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
     n.tx=tx;n.ty=ty;
   }
@@ -292,7 +231,6 @@
     bar.style.background=pct>50?'#4ade80':pct>25?'#facc15':'#ef4444';
   }
 
-  // BUG FIX: always use /zones/{zoneId}.json — no more special case for lerma
   function fetchZoneMap(scene, zoneId, cb){
     fetch(`/secretsoflerma/zones/${zoneId}.json`)
       .then(r=>r.json())
@@ -302,14 +240,6 @@
 
   class MainScene extends Phaser.Scene {
     constructor(){super('main');}
-
-    preload(){
-      // Load Migs's LPC spritesheet — 64×64 px per frame
-      this.load.spritesheet('migs-sheet','/secretsoflerma/assets/migs.png',{
-        frameWidth:  MIGS_FRAME_W,
-        frameHeight: MIGS_FRAME_H,
-      });
-    }
 
     create(){
       this.cameras.main.setBackgroundColor('#0b1020');
@@ -332,7 +262,7 @@
       this.input.on('pointerdown',(pointer)=>{
         if(STATE.clickConsumed){STATE.clickConsumed=false;return;}
         if(STATE.migsOpen){closeMigsMenu();return;}
-        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())if(n.body&&n.body.setStrokeStyle)n.body.setStrokeStyle(0);}
+        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())n.body.setStrokeStyle(0);}
         const cam=this.cameras.main;
         const worldX=pointer.x+cam.scrollX,worldY=pointer.y+cam.scrollY;
         const{tx,ty}=screenToTile(worldX,worldY);
@@ -374,10 +304,7 @@
 
     clearPortalEffects(){
       for(const fx of this.portalEffects){
-        fx.glow.destroy();
-        fx.outerRing.destroy();
-        fx.innerRing.destroy();
-        fx.particles.destroy();
+        fx.glow.destroy();fx.outerRing.destroy();fx.innerRing.destroy();fx.particles.destroy();
       }
       this.portalEffects.length=0;
     }
@@ -390,23 +317,15 @@
         const outerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.8,ISO_H*0.42).setStrokeStyle(2,0xB6FF77,0.9).setDepth(2);
         const innerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.56,ISO_H*0.26).setStrokeStyle(2,0xE6FFB2,0.9).setDepth(2);
         const particles=this.add.particles(c.x,c.y-6,'portal-particle',{
-          x:{min:-ISO_W*0.22,max:ISO_W*0.22},
-          y:{min:-ISO_H*0.14,max:ISO_H*0.14},
-          speedY:{min:-45,max:-12},
-          speedX:{min:-14,max:14},
-          scale:{start:0.75,end:0},
-          alpha:{start:0.95,end:0},
-          tint:[0x76FF91,0xB8FF96,0xE8FFC4],
-          lifespan:{min:600,max:1100},
-          frequency:34,
-          blendMode:'ADD',
-          rotate:{min:0,max:360},
+          x:{min:-ISO_W*0.22,max:ISO_W*0.22},y:{min:-ISO_H*0.14,max:ISO_H*0.14},
+          speedY:{min:-45,max:-12},speedX:{min:-14,max:14},
+          scale:{start:0.75,end:0},alpha:{start:0.95,end:0},
+          tint:[0x76FF91,0xB8FF96,0xE8FFC4],lifespan:{min:600,max:1100},
+          frequency:34,blendMode:'ADD',rotate:{min:0,max:360},
         }).setDepth(3);
-
         this.tweens.add({targets:outerRing,angle:360,duration:2200,ease:'Linear',repeat:-1});
         this.tweens.add({targets:innerRing,angle:-360,duration:1700,ease:'Linear',repeat:-1});
         this.tweens.add({targets:glow,alpha:{from:0.15,to:0.42},duration:900,yoyo:true,ease:'Sine.easeInOut',repeat:-1});
-
         this.portalEffects.push({glow,outerRing,innerRing,particles});
       }
     }
@@ -415,12 +334,9 @@
       if(msg.t==='WELCOME'){
         STATE.map.w=msg.map.w;STATE.map.h=msg.map.h;
         if(msg.zoneId){STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];}
-        this.recomputeOrigin();
-        updateZoneUI(STATE.zoneName);
-        fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());
-        return;
+        this.recomputeOrigin();updateZoneUI(STATE.zoneName);
+        fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());return;
       }
-
       if(msg.t==='SNAPSHOT'){
         STATE.you=msg.you;
         if(msg.zoneId){STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];updateZoneUI(STATE.zoneName);}
@@ -430,96 +346,70 @@
         if(Array.isArray(msg.npcs))for(const n of msg.npcs)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
         for(const n of STATE.npcs.values())setDepth(n,true);
         const me=msg.players.find(pl=>pl.id===STATE.you);
-        if(me)maybeSavePos(me.x,me.y);
-        return;
+        if(me)maybeSavePos(me.x,me.y);return;
       }
-
       if(msg.t==='ZONE_CHANGE'){
-        STATE.zoneId=msg.zoneId;
-        STATE.zoneName=msg.zoneName;
-        STATE.portals=msg.portals||[];
+        STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];
         STATE.map.w=msg.map.w;STATE.map.h=msg.map.h;
-        updateZoneUI(STATE.zoneName);
-        closeMigsMenu();
+        updateZoneUI(STATE.zoneName);closeMigsMenu();
         if(window.LERMA_SAVE_POS)window.LERMA_SAVE_POS(msg.x,msg.y,msg.zoneId);
-        clearAllPlayers();clearAllNPCs();
-        this.recomputeOrigin();
+        clearAllPlayers();clearAllNPCs();this.recomputeOrigin();
         fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());
         for(const pl of (msg.players||[]))upsertPlayer(this,pl.id,pl.x,pl.y,pl.name,pl.level);
         for(const p of STATE.players.values()){setPlayerVisual(p);setDepth(p,false);}
         if(Array.isArray(msg.npcs))for(const n of msg.npcs)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
         for(const n of STATE.npcs.values())setDepth(n,true);
         const zoneTxt=this.add.text(window.innerWidth/2,window.innerHeight/2,`📍 ${msg.zoneName}`,{fontSize:'22px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:4,resolution:2}).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
-        this.tweens.add({targets:zoneTxt,y:window.innerHeight/2-60,alpha:0,duration:2000,ease:'Power2',onComplete:()=>zoneTxt.destroy()});
-        return;
+        this.tweens.add({targets:zoneTxt,y:window.innerHeight/2-60,alpha:0,duration:2000,ease:'Power2',onComplete:()=>zoneTxt.destroy()});return;
       }
-
       if(msg.t==='DELTA'){
         if(Array.isArray(msg.rm))for(const id of msg.rm)removePlayer(id);
         if(Array.isArray(msg.up)){for(const u of msg.up){upsertPlayer(this,u.id,u.x,u.y,u.name,u.level);if(u.id===STATE.you)maybeSavePos(u.x,u.y);}}
         for(const p of STATE.players.values()){setPlayerVisual(p);setDepth(p,false);}
-        if(Array.isArray(msg.npcUp)){for(const n of msg.npcUp)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);for(const n of STATE.npcs.values())setDepth(n,true);}
-        return;
+        if(Array.isArray(msg.npcUp)){for(const n of msg.npcUp)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);for(const n of STATE.npcs.values())setDepth(n,true);}return;
       }
-
       if(msg.t==='NPC_HIT'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);
-        if(n.hpFill&&n.hpFill.width!==undefined)n.hpFill.width=30*pct;
-        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xff0000);
-        setTimeout(()=>{if(n.body&&n.body.setFillStyle)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
-        spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);
-        return;
+        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;
+        n.body.setFillStyle(0xff0000);
+        setTimeout(()=>{if(n.body)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
+        spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);return;
       }
-
       if(msg.t==='NPC_DIED'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xffffff);
-        this.time.delayedCall(200,()=>removeNPC(msg.npcId));
-        return;
+        n.body.setFillStyle(0xffffff);
+        this.time.delayedCall(200,()=>removeNPC(msg.npcId));return;
       }
-
       if(msg.t==='NPC_SPAWN'){
         upsertNPC(this,msg.id,msg.x,msg.y,msg.name,msg.kind,msg.hp,msg.maxHp);
-        const n=STATE.npcs.get(msg.id);if(n)setDepth(n,true);
-        return;
+        const n=STATE.npcs.get(msg.id);if(n)setDepth(n,true);return;
       }
-
       if(msg.t==='PLAYER_HIT'){
         updatePlayerHpBar(msg.hp,msg.maxHp);
         const me=STATE.players.get(STATE.you);
-        if(me){me.sprite.list[0].setFillStyle(0xff4444);me.sprite.list[1].setFillStyle(0xff4444);setTimeout(()=>setPlayerVisual(me),150);spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);}
-        return;
+        if(me){me.sprite.list[0].setFillStyle(0xff4444);me.sprite.list[1].setFillStyle(0xff4444);setTimeout(()=>setPlayerVisual(me),150);spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);}return;
       }
-
       if(msg.t==='STATS_UPDATE'){
         renderStatWindow(msg.stats,this.net);
         if(msg.hp!==undefined)updatePlayerHpBar(msg.hp,msg.maxHp);
-        if(window.LERMA_SAVE_STATS)window.LERMA_SAVE_STATS(msg.stats);
-        return;
+        if(window.LERMA_SAVE_STATS)window.LERMA_SAVE_STATS(msg.stats);return;
       }
-
       if(msg.t==='EXP_GAIN'){
         const me=STATE.players.get(STATE.you);
-        if(me){const txt=this.add.text(me.sprite.x,me.sprite.y-50,`+${msg.amount} EXP`,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:2,resolution:2}).setOrigin(0.5,1).setDepth(9999);this.tweens.add({targets:txt,y:me.sprite.y-80,alpha:0,duration:1200,ease:'Power2',onComplete:()=>txt.destroy()});}
-        return;
+        if(me){const txt=this.add.text(me.sprite.x,me.sprite.y-50,`+${msg.amount} EXP`,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:2,resolution:2}).setOrigin(0.5,1).setDepth(9999);this.tweens.add({targets:txt,y:me.sprite.y-80,alpha:0,duration:1200,ease:'Power2',onComplete:()=>txt.destroy()});}return;
       }
-
       if(msg.t==='PLAYER_LEVEL_UP'){
         if(msg.playerId===STATE.you){
           const lvlTxt=this.add.text(window.innerWidth/2,window.innerHeight/2,`⭐ LEVEL UP! ⭐\nNow Level ${msg.level}`,{fontSize:'28px',fontFamily:'system-ui,sans-serif',color:'#facc15',stroke:'#000',strokeThickness:4,align:'center',resolution:2}).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
           this.tweens.add({targets:lvlTxt,y:window.innerHeight/2-80,alpha:0,duration:2500,ease:'Power2',onComplete:()=>lvlTxt.destroy()});
         }
-        const p=STATE.players.get(msg.playerId);if(p&&p.lvlTag)p.lvlTag.setText(`Lv${msg.level}`);
-        return;
+        const p=STATE.players.get(msg.playerId);if(p&&p.lvlTag)p.lvlTag.setText(`Lv${msg.level}`);return;
       }
-
       if(msg.t==='MIGS_MENU'){showMigsMenu(msg,this.net);return;}
       if(msg.t==='MIGS_RESPONSE'){showMigsResponse(msg.message);return;}
       if(msg.t==='RESPAWN_UPDATED'){
         if(window.LERMA_USER){window.LERMA_USER.respawnZone=msg.zone;window.LERMA_USER.respawnX=msg.x;window.LERMA_USER.respawnY=msg.y;}
-        if(window.LERMA_SAVE_RESPAWN)window.LERMA_SAVE_RESPAWN(msg.zone,msg.x,msg.y);
-        return;
+        if(window.LERMA_SAVE_RESPAWN)window.LERMA_SAVE_RESPAWN(msg.zone,msg.x,msg.y);return;
       }
     }
 
