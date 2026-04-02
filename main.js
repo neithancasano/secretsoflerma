@@ -150,49 +150,155 @@
     el.textContent='📍 '+zoneName;
   }
 
-  function upsertPlayer(scene,id,tx,ty,name,level){
-    let p=STATE.players.get(id);
-    if(!p){
-      const base=scene.add.ellipse(0,0,18,10,0x7dd3fc).setOrigin(0.5,0.5);
-      const body=scene.add.rectangle(0,0,10,16,0x7dd3fc).setOrigin(0.5,1);
-      const label=scene.add.text(0,-24,name||id,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#e2e8f0',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-      const lvlTag=scene.add.text(0,-36,`Lv${level||1}`,{fontSize:'9px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#0b1020',strokeThickness:2,resolution:2}).setOrigin(0.5,1);
-      const container=scene.add.container(0,0,[body,base,label,lvlTag]);
-      p={id,tx,ty,rx:tx,ry:ty,sprite:container,label,lvlTag,body};
-      STATE.players.set(id,p);
-    } else {
-      if(name&&p.label)p.label.setText(name);
-      if(level&&p.lvlTag)p.lvlTag.setText(`Lv${level}`);
+  // ── Register all player walk animations once ───────────────────────────────
+  function ensurePlayerAnims(scene) {
+    for (const [animName, def] of Object.entries(PLAYER_SHEET.anims)) {
+      const key = `player-${animName}`;
+      if (!scene.anims.exists(key)) {
+        scene.anims.create({
+          key,
+          frames: scene.anims.generateFrameNumbers('player-sheet', { frames: def.frames }),
+          frameRate: def.frameRate,
+          repeat: def.repeat,
+        });
+      }
     }
-    p.tx=tx;p.ty=ty;
   }
+
+  // ── Create a player entity ─────────────────────────────────────────────────
+  function upsertPlayer(scene, id, tx, ty, name, level) {
+    let p = STATE.players.get(id);
+    if (!p) {
+      const isLocal = id === STATE.you;
+
+      if (scene.textures.exists('player-sheet')) {
+        ensurePlayerAnims(scene);
+
+        const spr = scene.add.sprite(0, 0, 'player-sheet');
+        spr.setScale(PLAYER_SHEET.scale);
+        spr.setOrigin(0.5, 1);
+        spr.setFrame(PLAYER_SHEET.idleFrames.down);
+
+        const sprH = PLAYER_SHEET.frameHeight * PLAYER_SHEET.scale;
+        const label = scene.add.text(0, -sprH - 2, name || id, {
+          fontSize:'11px', fontFamily:'system-ui,sans-serif',
+          color: isLocal ? '#a3e635' : '#e2e8f0',
+          stroke:'#0b1020', strokeThickness:3, resolution:2,
+        }).setOrigin(0.5, 1);
+
+        const lvlTag = scene.add.text(0, -sprH - 14, `Lv${level||1}`, {
+          fontSize:'9px', fontFamily:'system-ui,sans-serif',
+          color:'#a3e635', stroke:'#0b1020', strokeThickness:2, resolution:2,
+        }).setOrigin(0.5, 1);
+
+        const ring = isLocal ? scene.add.ellipse(0, 0, 22, 10, 0xa3e635, 0.25) : null;
+        const children = ring ? [ring, spr, label, lvlTag] : [spr, label, lvlTag];
+        const container = scene.add.container(0, 0, children);
+
+        p = {
+          id, tx, ty, rx:tx, ry:ty,
+          // destTx/destTy = the tile we're currently walking TOWARD
+          // Updated whenever the server sends a new position.
+          // Used for direction — avoids the noisy per-frame delta approach.
+          destTx:tx, destTy:ty,
+          sprite:container, label, lvlTag, body:spr,
+          useSprite:true, facing:'down', moving:false,
+        };
+      } else {
+        // shape fallback
+        const color = isLocal ? 0xa3e635 : 0x7dd3fc;
+        const base  = scene.add.ellipse(0,0,18,10,color).setOrigin(0.5,0.5);
+        const body  = scene.add.rectangle(0,0,10,16,color).setOrigin(0.5,1);
+        const label = scene.add.text(0,-24,name||id,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#e2e8f0',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const lvlTag= scene.add.text(0,-36,`Lv${level||1}`,{fontSize:'9px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#0b1020',strokeThickness:2,resolution:2}).setOrigin(0.5,1);
+        const container=scene.add.container(0,0,[body,base,label,lvlTag]);
+        p={id,tx,ty,rx:tx,ry:ty,destTx:tx,destTy:ty,sprite:container,label,lvlTag,body,useSprite:false,facing:'down',moving:false};
+      }
+      STATE.players.set(id, p);
+    } else {
+      // Server gave us a new destination — update facing direction NOW
+      // so the animation switches immediately rather than waiting for
+      // the lerp to build up a delta.
+      if (p.useSprite) {
+        const ddx = tx - p.destTx;
+        const ddy = ty - p.destTy;
+        const newDir = isoDir(ddx, ddy);
+        if (newDir) {
+          p.facing = newDir;
+          if (!p.moving || p.body.anims.currentAnim?.key !== `player-walk_${newDir}`) {
+            p.body.play(`player-walk_${newDir}`, true);
+            p.moving = true;
+          }
+        }
+      }
+      if (name && p.label)  p.label.setText(name);
+      if (level && p.lvlTag) p.lvlTag.setText(`Lv${level}`);
+      p.destTx = tx;
+      p.destTy = ty;
+    }
+    p.tx = tx; p.ty = ty;
+  }
+
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
-  function setPlayerVisual(p){const isYou=p.id===STATE.you;const color=isYou?0xa3e635:0x7dd3fc;p.sprite.list[0].fillColor=color;p.sprite.list[1].fillColor=color;if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');}
+
+  function setPlayerVisual(p){
+    if (p.useSprite) return;
+    const isYou=p.id===STATE.you;
+    const color=isYou?0xa3e635:0x7dd3fc;
+    p.sprite.list[0].fillColor=color;
+    p.sprite.list[1].fillColor=color;
+    if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');
+  }
 
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
     let n=STATE.npcs.get(id);
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
     const s=vis.scale||1;
     const isMigs=kind==='migs';
+
     if(!n){
-      const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
-      const body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
-      const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
-      const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
-      const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
-      const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
-      const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-      const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
-      const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
-      if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
-      const chatBubble=isMigs
-        ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
-        : null;
-      const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
-      if(chatBubble)children.push(chatBubble);
-      const container=scene.add.container(0,0,children);
-      container.setSize(isMigs?48:30,isMigs?48:30);
-      container.setInteractive();
+      let container, label, hpFill, body;
+
+      if(isMigs){
+        const KEY = 'migs-sheet';
+        const cfg = MIGS_SHEET;
+        if(!scene.anims.exists('migs-idle_down')){
+          scene.anims.create({
+            key:'migs-idle_down',
+            frames:scene.anims.generateFrameNumbers(KEY,{frames:cfg.anims.idle_down.frames}),
+            frameRate:cfg.anims.idle_down.frameRate,
+            repeat:cfg.anims.idle_down.repeat,
+          });
+        }
+        const migSprite=scene.add.sprite(0,0,KEY);
+        migSprite.setScale(cfg.scale);
+        migSprite.setOrigin(0.5,1);
+        migSprite.play('migs-idle_down');
+        const spriteH=cfg.frameHeight*cfg.scale;
+        label=scene.add.text(0,-spriteH-2,name||'Migs',{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:'#fde68a',stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const chatBubble=scene.add.text(0,-spriteH-16,'💬',{fontSize:'13px',resolution:2}).setOrigin(0.5,1);
+        container=scene.add.container(0,0,[migSprite,label,chatBubble]);
+        container.setSize(cfg.frameWidth*cfg.scale,spriteH);
+        container.setInteractive();
+        body=migSprite;
+        hpFill={width:0,x:0};
+
+      } else {
+        const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
+        body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
+        const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
+        const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
+        const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
+        const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
+        label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
+        hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
+        const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
+        container=scene.add.container(0,0,children);
+        container.setSize(30,30);
+        container.setInteractive();
+      }
+
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -204,22 +310,22 @@
         }
       });
       container.on('pointerover',()=>{
-        if(isMigs){
-          scene.game.canvas.classList.add('migs-hover-cursor');
-        } else {
-          scene.input.setDefaultCursor('crosshair');
-        }
+        if(isMigs) scene.game.canvas.classList.add('migs-hover-cursor');
+        else scene.input.setDefaultCursor('crosshair');
       });
       container.on('pointerout',()=>{
         scene.game.canvas.classList.remove('migs-hover-cursor');
         scene.input.setDefaultCursor('default');
       });
+
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
+
     if(!isMigs&&hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
     n.tx=tx;n.ty=ty;
   }
+
   function removeNPC(id){const n=STATE.npcs.get(id);if(!n)return;n.sprite.destroy();STATE.npcs.delete(id);if(STATE.attackTarget===id)STATE.attackTarget=null;}
   function clearAllNPCs(){for(const n of STATE.npcs.values())n.sprite.destroy();STATE.npcs.clear();}
   function clearAllPlayers(){for(const p of STATE.players.values())p.sprite.destroy();STATE.players.clear();}
@@ -280,7 +386,6 @@
     bar.style.background=pct>50?'#4ade80':pct>25?'#facc15':'#ef4444';
   }
 
-  // BUG FIX: always use /zones/{zoneId}.json — no more special case for lerma
   function fetchZoneMap(scene, zoneId, cb){
     fetch(`/secretsoflerma/zones/${zoneId}.json`)
       .then(r=>r.json())
@@ -327,7 +432,11 @@
       this.input.on('pointerdown',(pointer)=>{
         if(STATE.clickConsumed){STATE.clickConsumed=false;return;}
         if(STATE.migsOpen){closeMigsMenu();return;}
-        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())n.body.setStrokeStyle(0);}
+        if(STATE.attackTarget){
+          STATE.attackTarget=null;
+          this.net.send({t:'CANCEL_ATTACK'});
+          for(const n of STATE.npcs.values())if(n.body&&n.body.setStrokeStyle)n.body.setStrokeStyle(0);
+        }
         const cam=this.cameras.main;
         const worldX=pointer.x+cam.scrollX,worldY=pointer.y+cam.scrollY;
         const{tx,ty}=screenToTile(worldX,worldY);
@@ -410,12 +519,9 @@
       if(msg.t==='WELCOME'){
         STATE.map.w=msg.map.w;STATE.map.h=msg.map.h;
         if(msg.zoneId){STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];}
-        this.recomputeOrigin();
-        updateZoneUI(STATE.zoneName);
-        fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());
-        return;
+        this.recomputeOrigin();updateZoneUI(STATE.zoneName);
+        fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());return;
       }
-
       if(msg.t==='SNAPSHOT'){
         STATE.you=msg.you;
         if(msg.zoneId){STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];updateZoneUI(STATE.zoneName);}
@@ -425,112 +531,133 @@
         if(Array.isArray(msg.npcs))for(const n of msg.npcs)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
         for(const n of STATE.npcs.values())setDepth(n,true);
         const me=msg.players.find(pl=>pl.id===STATE.you);
-        if(me)maybeSavePos(me.x,me.y);
-        return;
+        if(me)maybeSavePos(me.x,me.y);return;
       }
-
       if(msg.t==='ZONE_CHANGE'){
-        STATE.zoneId=msg.zoneId;
-        STATE.zoneName=msg.zoneName;
-        STATE.portals=msg.portals||[];
+        STATE.zoneId=msg.zoneId;STATE.zoneName=msg.zoneName;STATE.portals=msg.portals||[];
         STATE.map.w=msg.map.w;STATE.map.h=msg.map.h;
-        updateZoneUI(STATE.zoneName);
-        closeMigsMenu();
+        updateZoneUI(STATE.zoneName);closeMigsMenu();
         if(window.LERMA_SAVE_POS)window.LERMA_SAVE_POS(msg.x,msg.y,msg.zoneId);
-        clearAllPlayers();clearAllNPCs();
-        this.recomputeOrigin();
+        clearAllPlayers();clearAllNPCs();this.recomputeOrigin();
         fetchZoneMap(this,STATE.zoneId,()=>this.drawTileMap());
         for(const pl of (msg.players||[]))upsertPlayer(this,pl.id,pl.x,pl.y,pl.name,pl.level);
         for(const p of STATE.players.values()){setPlayerVisual(p);setDepth(p,false);}
         if(Array.isArray(msg.npcs))for(const n of msg.npcs)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);
         for(const n of STATE.npcs.values())setDepth(n,true);
         const zoneTxt=this.add.text(window.innerWidth/2,window.innerHeight/2,`📍 ${msg.zoneName}`,{fontSize:'22px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:4,resolution:2}).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
-        this.tweens.add({targets:zoneTxt,y:window.innerHeight/2-60,alpha:0,duration:2000,ease:'Power2',onComplete:()=>zoneTxt.destroy()});
-        return;
+        this.tweens.add({targets:zoneTxt,y:window.innerHeight/2-60,alpha:0,duration:2000,ease:'Power2',onComplete:()=>zoneTxt.destroy()});return;
       }
-
       if(msg.t==='DELTA'){
         if(Array.isArray(msg.rm))for(const id of msg.rm)removePlayer(id);
         if(Array.isArray(msg.up)){for(const u of msg.up){upsertPlayer(this,u.id,u.x,u.y,u.name,u.level);if(u.id===STATE.you)maybeSavePos(u.x,u.y);}}
         for(const p of STATE.players.values()){setPlayerVisual(p);setDepth(p,false);}
-        if(Array.isArray(msg.npcUp)){for(const n of msg.npcUp)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);for(const n of STATE.npcs.values())setDepth(n,true);}
-        return;
+        if(Array.isArray(msg.npcUp)){for(const n of msg.npcUp)upsertNPC(this,n.id,n.x,n.y,n.name,n.kind,n.hp,n.maxHp);for(const n of STATE.npcs.values())setDepth(n,true);}return;
       }
-
       if(msg.t==='NPC_HIT'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;
-        n.body.setFillStyle(0xff0000);
-        setTimeout(()=>{if(n.body)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
-        spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);
-        return;
+        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);
+        if(n.hpFill&&n.hpFill.width!==undefined){n.hpFill.width=30*pct;n.hpFill.x=-15;}
+        if(n.body&&n.body.setTintFill)n.body.setTintFill(0xff0000);
+        else if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xff0000);
+        setTimeout(()=>{
+          if(!n.body)return;
+          if(n.body.clearTint)n.body.clearTint();
+          else if(n.body.setFillStyle)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);
+        },120);
+        spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);return;
       }
-
       if(msg.t==='NPC_DIED'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.body.setFillStyle(0xffffff);
-        this.time.delayedCall(200,()=>removeNPC(msg.npcId));
-        return;
+        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xffffff);
+        this.time.delayedCall(200,()=>removeNPC(msg.npcId));return;
       }
-
       if(msg.t==='NPC_SPAWN'){
         upsertNPC(this,msg.id,msg.x,msg.y,msg.name,msg.kind,msg.hp,msg.maxHp);
-        const n=STATE.npcs.get(msg.id);if(n)setDepth(n,true);
-        return;
+        const n=STATE.npcs.get(msg.id);if(n)setDepth(n,true);return;
       }
-
       if(msg.t==='PLAYER_HIT'){
         updatePlayerHpBar(msg.hp,msg.maxHp);
         const me=STATE.players.get(STATE.you);
-        if(me){me.sprite.list[0].setFillStyle(0xff4444);me.sprite.list[1].setFillStyle(0xff4444);setTimeout(()=>setPlayerVisual(me),150);spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);}
-        return;
+        if(me){
+          if(me.useSprite){
+            me.body.setTintFill(0xff4444);
+            setTimeout(()=>{if(me.body)me.body.clearTint();},150);
+          } else {
+            me.sprite.list[0].setFillStyle(0xff4444);
+            me.sprite.list[1].setFillStyle(0xff4444);
+            setTimeout(()=>setPlayerVisual(me),150);
+          }
+          spawnDmgNumber(this,me.sprite.x,me.sprite.y,msg.dmg,'#ff9900',false);
+        }return;
       }
-
       if(msg.t==='STATS_UPDATE'){
         renderStatWindow(msg.stats,this.net);
         if(msg.hp!==undefined)updatePlayerHpBar(msg.hp,msg.maxHp);
-        if(window.LERMA_SAVE_STATS)window.LERMA_SAVE_STATS(msg.stats);
-        return;
+        if(window.LERMA_SAVE_STATS)window.LERMA_SAVE_STATS(msg.stats);return;
       }
-
       if(msg.t==='EXP_GAIN'){
         const me=STATE.players.get(STATE.you);
-        if(me){const txt=this.add.text(me.sprite.x,me.sprite.y-50,`+${msg.amount} EXP`,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:2,resolution:2}).setOrigin(0.5,1).setDepth(9999);this.tweens.add({targets:txt,y:me.sprite.y-80,alpha:0,duration:1200,ease:'Power2',onComplete:()=>txt.destroy()});}
-        return;
+        if(me){const txt=this.add.text(me.sprite.x,me.sprite.y-50,`+${msg.amount} EXP`,{fontSize:'11px',fontFamily:'system-ui,sans-serif',color:'#a3e635',stroke:'#000',strokeThickness:2,resolution:2}).setOrigin(0.5,1).setDepth(9999);this.tweens.add({targets:txt,y:me.sprite.y-80,alpha:0,duration:1200,ease:'Power2',onComplete:()=>txt.destroy()});}return;
       }
-
       if(msg.t==='PLAYER_LEVEL_UP'){
         if(msg.playerId===STATE.you){
           const lvlTxt=this.add.text(window.innerWidth/2,window.innerHeight/2,`⭐ LEVEL UP! ⭐\nNow Level ${msg.level}`,{fontSize:'28px',fontFamily:'system-ui,sans-serif',color:'#facc15',stroke:'#000',strokeThickness:4,align:'center',resolution:2}).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
           this.tweens.add({targets:lvlTxt,y:window.innerHeight/2-80,alpha:0,duration:2500,ease:'Power2',onComplete:()=>lvlTxt.destroy()});
         }
-        const p=STATE.players.get(msg.playerId);if(p&&p.lvlTag)p.lvlTag.setText(`Lv${msg.level}`);
-        return;
+        const p=STATE.players.get(msg.playerId);if(p&&p.lvlTag)p.lvlTag.setText(`Lv${msg.level}`);return;
       }
-
       if(msg.t==='MIGS_MENU'){showMigsMenu(msg,this.net);return;}
       if(msg.t==='MIGS_RESPONSE'){showMigsResponse(msg.message);return;}
       if(msg.t==='RESPAWN_UPDATED'){
         if(window.LERMA_USER){window.LERMA_USER.respawnZone=msg.zone;window.LERMA_USER.respawnX=msg.x;window.LERMA_USER.respawnY=msg.y;}
-        if(window.LERMA_SAVE_RESPAWN)window.LERMA_SAVE_RESPAWN(msg.zone,msg.x,msg.y);
-        return;
+        if(window.LERMA_SAVE_RESPAWN)window.LERMA_SAVE_RESPAWN(msg.zone,msg.x,msg.y);return;
       }
     }
 
-    update(_,dtMs){
-      const dt=dtMs/1000,FOLLOW=16;
-      for(const p of STATE.players.values()){
-        p.rx+=(p.tx-p.rx)*Math.min(1,FOLLOW*dt);
-        p.ry+=(p.ty-p.ry)*Math.min(1,FOLLOW*dt);
-        const s=tileToScreen(p.rx,p.ry);
-        p.sprite.x=s.x;p.sprite.y=s.y-6;setDepth(p,false);
+    update(_, dtMs){
+      const dt = dtMs / 1000;
+      // Softer follow factor → smoother glide between server ticks
+      const FOLLOW = 8;
+      // Threshold below which we consider the player "arrived"
+      const ARRIVE = 0.04;
+
+      for (const p of STATE.players.values()) {
+        p.rx += (p.tx - p.rx) * Math.min(1, FOLLOW * dt);
+        p.ry += (p.ty - p.ry) * Math.min(1, FOLLOW * dt);
+        const s = tileToScreen(p.rx, p.ry);
+        p.sprite.x = s.x; p.sprite.y = s.y - 6;
+        setDepth(p, false);
+
+        if (p.useSprite) {
+          // Still has meaningful distance left to travel → keep walking
+          const distX = p.tx - p.rx;
+          const distY = p.ty - p.ry;
+          const arrived = Math.abs(distX) < ARRIVE && Math.abs(distY) < ARRIVE;
+
+          if (!arrived) {
+            // Drive direction from remaining distance (smooth, stable)
+            const dir = isoDir(distX, distY);
+            if (dir && (!p.moving || p.facing !== dir)) {
+              p.body.play(`player-walk_${dir}`, true);
+              p.facing = dir;
+              p.moving = true;
+            }
+          } else if (p.moving) {
+            // Truly arrived — freeze on idle stance
+            p.body.stop();
+            p.body.setFrame(PLAYER_SHEET.idleFrames[p.facing] ?? PLAYER_SHEET.idleFrames.down);
+            p.moving = false;
+          }
+        }
       }
+
       for(const n of STATE.npcs.values()){
         n.rx+=(n.tx-n.rx)*Math.min(1,FOLLOW*0.5*dt);
         n.ry+=(n.ty-n.ry)*Math.min(1,FOLLOW*0.5*dt);
         const s=tileToScreen(n.rx,n.ry);
         n.sprite.x=s.x;n.sprite.y=s.y-4;setDepth(n,true);
       }
+
       const me=STATE.players.get(STATE.you);
       if(me){
         const s=tileToScreen(me.rx,me.ry);

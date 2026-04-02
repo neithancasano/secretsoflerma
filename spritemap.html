@@ -1,0 +1,751 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>🎨 Sprite Mapper — Secrets of Lerma</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #0b1020; color: #e2e8f0; font-family: system-ui, sans-serif; font-size: 13px; overflow: hidden; }
+
+    /* ── Layout ── */
+    #app { display: flex; height: 100vh; }
+    #sidebar { width: 300px; min-width: 300px; background: #0f172a; border-right: 1px solid #1e293b; display: flex; flex-direction: column; overflow: hidden; }
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Sidebar sections ── */
+    .sb-section { padding: 12px 14px; border-bottom: 1px solid #1e293b; }
+    .sb-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #475569; margin-bottom: 6px; }
+    #anim-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .anim-item { display: flex; align-items: center; gap: 6px; padding: 5px 14px; cursor: pointer; border-left: 3px solid transparent; }
+    .anim-item:hover { background: #1e293b; }
+    .anim-item.active { border-left-color: #a3e635; background: #1e293b; }
+    .anim-item .anim-dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; flex-shrink: 0; }
+    .anim-item.has-frames .anim-dot { background: #a3e635; }
+    .anim-name { flex: 1; color: #cbd5e1; }
+    .anim-count { font-size: 10px; color: #475569; }
+    .anim-del { opacity: 0; font-size: 11px; color: #ef4444; cursor: pointer; padding: 0 2px; }
+    .anim-item:hover .anim-del { opacity: 1; }
+
+    /* ── Controls ── */
+    input[type=text], input[type=number], select {
+      background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+      border-radius: 5px; padding: 5px 8px; font-size: 12px; width: 100%;
+    }
+    input[type=number] { width: 72px; }
+    button {
+      background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+      border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    button:hover { background: #334155; }
+    button.primary { background: #166534; border-color: #16a34a; color: #bbf7d0; }
+    button.primary:hover { background: #15803d; }
+    button.danger { background: #7f1d1d; border-color: #b91c1c; color: #fecaca; }
+    .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+    .row label { color: #94a3b8; white-space: nowrap; font-size: 11px; }
+
+    /* ── Canvas area ── */
+    #canvas-wrap {
+      flex: 1; overflow: auto; background: #111827;
+      position: relative;
+      cursor: crosshair;
+    }
+    #sheet-canvas { display: block; image-rendering: pixelated; }
+    /* selection overlay drawn on canvas, no extra dom needed */
+
+    /* ── Preview bar ── */
+    #preview-bar {
+      height: 140px; min-height: 140px; background: #0f172a;
+      border-top: 1px solid #1e293b;
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 16px;
+      overflow-x: auto;
+    }
+    #preview-canvas { image-rendering: pixelated; border: 1px solid #1e293b; border-radius: 4px; background: repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 0 0 / 12px 12px; }
+    #preview-info { min-width: 140px; }
+    #preview-info h3 { font-size: 12px; color: #a3e635; margin-bottom: 6px; }
+    .pi-row { display: flex; justify-content: space-between; margin: 3px 0; }
+    .pi-row span { color: #94a3b8; }
+    .pi-row b { color: #e2e8f0; }
+    #frame-strip { display: flex; gap: 6px; align-items: center; overflow-x: auto; }
+    .frame-thumb { border: 2px solid #1e293b; border-radius: 3px; image-rendering: pixelated; cursor: pointer; background: repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 0 0 / 8px 8px; }
+    .frame-thumb.active { border-color: #a3e635; }
+
+    /* ── Toolbar ── */
+    #toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #0f172a; border-bottom: 1px solid #1e293b; flex-wrap: wrap; }
+    #toolbar span.sep { width: 1px; height: 20px; background: #1e293b; }
+    #zoom-val { width: 36px; text-align: center; color: #94a3b8; font-size: 11px; }
+    .tool-active { border-color: #a3e635 !important; color: #a3e635 !important; }
+
+    /* ── Status bar ── */
+    #status { padding: 3px 12px; font-size: 10px; color: #475569; background: #0f172a; border-top: 1px solid #1e293b; }
+
+    /* ── Scrollbar styling ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    #drop-overlay {
+      position: absolute; inset: 0; background: #0b1020cc; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px; z-index: 99;
+      border: 3px dashed #334155; border-radius: 8px; margin: 16px;
+    }
+    #drop-overlay h2 { color: #a3e635; font-size: 1.4rem; }
+    #drop-overlay p  { color: #64748b; font-size: 0.9rem; }
+    #drop-overlay.hidden { display: none; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <div id="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">🎨 Sprite Mapper</div>
+      <button onclick="document.getElementById('file-in').click()" style="width:100%">📂 Load Spritesheet</button>
+      <input type="file" id="file-in" accept="image/*" style="display:none">
+      <div class="row" style="margin-top:8px">
+        <label>Frame W</label>
+        <input type="number" id="fw" value="64" min="1" max="512">
+        <label>H</label>
+        <input type="number" id="fh" value="64" min="1" max="512">
+        <button onclick="reloadGrid()" title="Apply frame size">↻</button>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">Animations</div>
+      <div class="row" style="margin-bottom:6px">
+        <input type="text" id="new-anim-name" placeholder="e.g. idle_down" style="flex:1">
+        <button onclick="addAnim()">＋</button>
+      </div>
+      <div style="font-size:10px;color:#475569;margin-bottom:4px">Direction (for rotatable NPCs)</div>
+      <select id="anim-dir">
+        <option value="">— none —</option>
+        <option value="down">⬇ Down (south)</option>
+        <option value="up">⬆ Up (north)</option>
+        <option value="left">⬅ Left (west)</option>
+        <option value="right">➡ Right (east)</option>
+      </select>
+    </div>
+
+    <div id="anim-list"></div>
+
+    <div class="sb-section">
+      <div class="sb-label">Playback</div>
+      <div class="row">
+        <label>FPS</label>
+        <input type="number" id="fps" value="6" min="1" max="60">
+        <button id="btn-play" onclick="togglePlay()">▶ Play</button>
+      </div>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <div class="sb-label">Export</div>
+      <button class="primary" onclick="exportJSON()" style="width:100%;margin-bottom:6px">💾 Export JSON</button>
+      <button onclick="importJSON()" style="width:100%">📥 Import JSON</button>
+      <textarea id="json-io" style="width:100%;height:80px;margin-top:6px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:5px;font-size:10px;padding:4px;resize:vertical" placeholder="Paste JSON here to import…"></textarea>
+    </div>
+  </div>
+
+  <!-- ══ MAIN ══ -->
+  <div id="main">
+    <div id="toolbar">
+      <button id="tool-sel" class="tool-active" onclick="setTool('select')">⬚ Select</button>
+      <button id="tool-erase" onclick="setTool('erase')">✕ Erase</button>
+      <span class="sep"></span>
+      <label style="color:#94a3b8;font-size:11px">Zoom</label>
+      <button onclick="zoom(-0.5)">−</button>
+      <span id="zoom-val">1×</span>
+      <button onclick="zoom(+0.5)">+</button>
+      <button onclick="resetZoom()">fit</button>
+      <span class="sep"></span>
+      <label style="color:#94a3b8;font-size:11px">Grid</label>
+      <button id="btn-grid" class="tool-active" onclick="toggleGrid()">⊞ On</button>
+      <span class="sep"></span>
+      <span id="cur-anim-label" style="color:#a3e635;font-size:11px">No animation selected</span>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="sheet-canvas"></canvas>
+      <div id="drop-overlay">
+        <h2>🎨 Sprite Mapper</h2>
+        <p>Drop a spritesheet image here, or use the Load button</p>
+        <p style="font-size:0.8rem;color:#334155">Supports PNG, GIF, any image format</p>
+        <button onclick="document.getElementById('file-in').click()" style="margin-top:8px">📂 Load Spritesheet</button>
+      </div>
+    </div>
+
+    <div id="preview-bar">
+      <canvas id="preview-canvas" width="128" height="128"></canvas>
+      <div id="preview-info">
+        <h3 id="pi-name">No animation</h3>
+        <div class="pi-row"><span>Frames</span><b id="pi-frames">—</b></div>
+        <div class="pi-row"><span>FPS</span><b id="pi-fps">—</b></div>
+        <div class="pi-row"><span>Direction</span><b id="pi-dir">—</b></div>
+        <div class="pi-row"><span>Frame size</span><b id="pi-size">—</b></div>
+      </div>
+      <div id="frame-strip"></div>
+    </div>
+
+    <div id="status">Ready — load a spritesheet to begin</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let img = null;           // loaded Image
+let imgName = '';
+let FW = 64, FH = 64;    // frame size
+let SCALE = 1;            // canvas zoom
+let showGrid = true;
+let tool = 'select';      // 'select' | 'erase'
+
+// animations: [{name, dir, frames:[{col,row}]}]
+let anims = [];
+let activeAnim = null;    // index
+
+// selection state
+let selecting = false;
+let selStart = null;      // {col, row}
+let selEnd   = null;      // {col, row}
+
+// playback
+let playing = false;
+let playFrame = 0;
+let playTimer = null;
+
+// ── DOM refs ──
+const wrap     = document.getElementById('canvas-wrap');
+const canvas   = document.getElementById('sheet-canvas');
+const ctx      = canvas.getContext('2d');
+const prevCvs  = document.getElementById('preview-canvas');
+const prevCtx  = prevCvs.getContext('2d');
+const status   = document.getElementById('status');
+const animList = document.getElementById('anim-list');
+const overlay  = document.getElementById('drop-overlay');
+
+// ══════════════════════════════════════════════════════════
+//  FILE LOADING
+// ══════════════════════════════════════════════════════════
+document.getElementById('file-in').addEventListener('change', e => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+
+// Drag and drop
+wrap.addEventListener('dragover', e => { e.preventDefault(); });
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+function loadFile(file) {
+  imgName = file.name;
+  const url = URL.createObjectURL(file);
+  const i = new Image();
+  i.onload = () => {
+    img = i;
+    overlay.classList.add('hidden');
+    reloadGrid();
+    setStatus(`Loaded: ${file.name} (${img.width}×${img.height}px)`);
+  };
+  i.src = url;
+}
+
+function reloadGrid() {
+  FW = parseInt(document.getElementById('fw').value) || 64;
+  FH = parseInt(document.getElementById('fh').value) || 64;
+  if (!img) return;
+  fitZoom();
+  redraw();
+  document.getElementById('pi-size').textContent = `${FW}×${FH}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  ZOOM
+// ══════════════════════════════════════════════════════════
+function zoom(delta) {
+  SCALE = Math.max(0.25, Math.min(8, SCALE + delta));
+  document.getElementById('zoom-val').textContent = SCALE + '×';
+  if (img) redraw();
+}
+function resetZoom() { fitZoom(); if (img) redraw(); }
+function fitZoom() {
+  if (!img) return;
+  const ws = wrap.clientWidth / img.width;
+  const hs = wrap.clientHeight / img.height;
+  SCALE = Math.min(ws, hs, 4);
+  SCALE = Math.round(SCALE * 4) / 4;   // snap to 0.25
+  document.getElementById('zoom-val').textContent = SCALE + '×';
+}
+
+// ══════════════════════════════════════════════════════════
+//  DRAW
+// ══════════════════════════════════════════════════════════
+function redraw() {
+  if (!img) return;
+  const W = img.width, H = img.height;
+  const cols = Math.floor(W / FW);
+  const rows = Math.floor(H / FH);
+  canvas.width  = W * SCALE;
+  canvas.height = H * SCALE;
+
+  // checkerboard background
+  ctx.save();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      ctx.fillStyle = ((r + c) % 2 === 0) ? '#1a2133' : '#111827';
+      ctx.fillRect(c * FW * SCALE, r * FH * SCALE, FW * SCALE, FH * SCALE);
+    }
+  }
+  ctx.restore();
+
+  // image
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, W * SCALE, H * SCALE);
+
+  // coloured frame highlights for all anims
+  const PALETTE = ['#a3e635','#f59e0b','#38bdf8','#f472b6','#a78bfa','#34d399','#fb923c'];
+  anims.forEach((anim, ai) => {
+    anim.frames.forEach(fr => {
+      ctx.save();
+      ctx.fillStyle = PALETTE[ai % PALETTE.length] + '44';
+      ctx.fillRect(fr.col * FW * SCALE, fr.row * FH * SCALE, FW * SCALE, FH * SCALE);
+      ctx.strokeStyle = PALETTE[ai % PALETTE.length];
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(fr.col * FW * SCALE + 1, fr.row * FH * SCALE + 1, FW * SCALE - 2, FH * SCALE - 2);
+      ctx.restore();
+    });
+  });
+
+  // active selection drag highlight
+  if (selStart && selEnd) {
+    const r1 = Math.min(selStart.row, selEnd.row);
+    const r2 = Math.max(selStart.row, selEnd.row);
+    const c1 = Math.min(selStart.col, selEnd.col);
+    const c2 = Math.max(selStart.col, selEnd.col);
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        ctx.save();
+        ctx.fillStyle = '#ffffff22';
+        ctx.fillRect(c * FW * SCALE, r * FH * SCALE, FW * SCALE, FH * SCALE);
+        ctx.strokeStyle = '#ffffffaa';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(c * FW * SCALE + 1, r * FH * SCALE + 1, FW * SCALE - 2, FH * SCALE - 2);
+        ctx.restore();
+      }
+    }
+  }
+
+  // grid lines
+  if (showGrid) {
+    ctx.save();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.6;
+    for (let c = 0; c <= cols; c++) {
+      ctx.beginPath();
+      ctx.moveTo(c * FW * SCALE, 0);
+      ctx.lineTo(c * FW * SCALE, H * SCALE);
+      ctx.stroke();
+    }
+    for (let r = 0; r <= rows; r++) {
+      ctx.beginPath();
+      ctx.moveTo(0, r * FH * SCALE);
+      ctx.lineTo(W * SCALE, r * FH * SCALE);
+      ctx.stroke();
+    }
+    // row/col labels
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `${Math.max(8, Math.min(10, FW * SCALE * 0.15))}px system-ui`;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        ctx.fillText(`${r},${c}`, c * FW * SCALE + 2, r * FH * SCALE + 10);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  GRID
+// ══════════════════════════════════════════════════════════
+function toggleGrid() {
+  showGrid = !showGrid;
+  const btn = document.getElementById('btn-grid');
+  btn.textContent = showGrid ? '⊞ On' : '⊟ Off';
+  btn.classList.toggle('tool-active', showGrid);
+  if (img) redraw();
+}
+
+// ══════════════════════════════════════════════════════════
+//  MOUSE INTERACTION
+// ══════════════════════════════════════════════════════════
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  return {
+    col: Math.floor(x / (FW * SCALE)),
+    row: Math.floor(y / (FH * SCALE)),
+    x, y,
+  };
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (!img || activeAnim === null) return;
+  const p = canvasPos(e);
+  if (tool === 'erase') {
+    eraseFrame(p.col, p.row);
+    return;
+  }
+  selecting = true;
+  selStart = { col: p.col, row: p.row };
+  selEnd   = { col: p.col, row: p.row };
+  redraw();
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!img) return;
+  const p = canvasPos(e);
+  setStatus(`Row ${p.row}, Col ${p.col}  |  Frame index ${p.row * Math.floor(img.width / FW) + p.col}  |  Pixel (${Math.floor(p.x / SCALE)}, ${Math.floor(p.y / SCALE)})`);
+  if (!selecting) return;
+  selEnd = { col: p.col, row: p.row };
+  redraw();
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!selecting) return;
+  selecting = false;
+  if (!selStart || !selEnd || activeAnim === null) { selStart = selEnd = null; redraw(); return; }
+
+  const r1 = Math.min(selStart.row, selEnd.row);
+  const r2 = Math.max(selStart.row, selEnd.row);
+  const c1 = Math.min(selStart.col, selEnd.col);
+  const c2 = Math.max(selStart.col, selEnd.col);
+
+  const anim = anims[activeAnim];
+  // Add frames left-to-right, top-to-bottom within the selection rectangle
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      // Avoid duplicates
+      const already = anim.frames.some(f => f.col === c && f.row === r);
+      if (!already) anim.frames.push({ col: c, row: r });
+    }
+  }
+
+  selStart = selEnd = null;
+  renderAnimList();
+  updatePreview();
+  redraw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (selecting) { selecting = false; selStart = selEnd = null; redraw(); }
+});
+
+function eraseFrame(col, row) {
+  if (activeAnim === null) return;
+  const anim = anims[activeAnim];
+  const before = anim.frames.length;
+  anim.frames = anim.frames.filter(f => !(f.col === col && f.row === row));
+  if (anim.frames.length !== before) { renderAnimList(); updatePreview(); redraw(); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  TOOL
+// ══════════════════════════════════════════════════════════
+function setTool(t) {
+  tool = t;
+  document.getElementById('tool-sel').classList.toggle('tool-active', t === 'select');
+  document.getElementById('tool-erase').classList.toggle('tool-active', t === 'erase');
+  canvas.style.cursor = t === 'erase' ? 'not-allowed' : 'crosshair';
+}
+
+// ══════════════════════════════════════════════════════════
+//  ANIMATIONS
+// ══════════════════════════════════════════════════════════
+const ANIM_PRESETS = [
+  // Standard LPC animations
+  {label:'--- Combat ---', disabled:true},
+  {name:'spellcast_up',   dir:'up'},
+  {name:'spellcast_left', dir:'left'},
+  {name:'spellcast_down', dir:'down'},
+  {name:'spellcast_right',dir:'right'},
+  {name:'thrust_up',      dir:'up'},
+  {name:'thrust_left',    dir:'left'},
+  {name:'thrust_down',    dir:'down'},
+  {name:'thrust_right',   dir:'right'},
+  {name:'walk_up',        dir:'up'},
+  {name:'walk_left',      dir:'left'},
+  {name:'walk_down',      dir:'down'},
+  {name:'walk_right',     dir:'right'},
+  {name:'slash_up',       dir:'up'},
+  {name:'slash_left',     dir:'left'},
+  {name:'slash_down',     dir:'down'},
+  {name:'slash_right',    dir:'right'},
+  {name:'shoot_up',       dir:'up'},
+  {name:'shoot_left',     dir:'left'},
+  {name:'shoot_down',     dir:'down'},
+  {name:'shoot_right',    dir:'right'},
+  {name:'hurt',           dir:''},
+  {label:'--- Expanded ---', disabled:true},
+  {name:'climb',          dir:''},
+  {name:'idle_up',        dir:'up'},
+  {name:'idle_left',      dir:'left'},
+  {name:'idle_down',      dir:'down'},
+  {name:'idle_right',     dir:'right'},
+  {name:'jump',           dir:''},
+  {name:'sit',            dir:''},
+  {name:'run_up',         dir:'up'},
+  {name:'run_left',       dir:'left'},
+  {name:'run_down',       dir:'down'},
+  {name:'run_right',      dir:'right'},
+];
+
+// Inject preset picker under the add field
+(function buildPresetPicker() {
+  const sel = document.createElement('select');
+  sel.id = 'preset-sel';
+  sel.style.cssText = 'width:100%;margin-top:4px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:5px;padding:4px 6px;font-size:11px;';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = '— Quick-add LPC animation… —';
+  sel.appendChild(blank);
+  ANIM_PRESETS.forEach(p => {
+    const o = document.createElement('option');
+    if (p.disabled) { o.disabled = true; o.textContent = p.label; }
+    else { o.value = JSON.stringify(p); o.textContent = p.name; }
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const p = JSON.parse(sel.value);
+    document.getElementById('new-anim-name').value = p.name;
+    document.getElementById('anim-dir').value = p.dir || '';
+    sel.value = '';
+  });
+  const sb = document.querySelector('#sidebar .sb-section:nth-child(2)');
+  sb.appendChild(sel);
+})();
+
+function addAnim() {
+  const name = document.getElementById('new-anim-name').value.trim();
+  const dir  = document.getElementById('anim-dir').value;
+  if (!name) return;
+  if (anims.some(a => a.name === name)) { alert('Animation "' + name + '" already exists'); return; }
+  anims.push({ name, dir, frames: [] });
+  activeAnim = anims.length - 1;
+  document.getElementById('new-anim-name').value = '';
+  renderAnimList();
+  updatePreview();
+  redraw();
+}
+
+function deleteAnim(i) {
+  if (!confirm('Delete "' + anims[i].name + '"?')) return;
+  anims.splice(i, 1);
+  if (activeAnim >= anims.length) activeAnim = anims.length - 1;
+  renderAnimList();
+  updatePreview();
+  redraw();
+}
+
+function selectAnim(i) {
+  activeAnim = i;
+  renderAnimList();
+  updatePreview();
+  redraw();
+  document.getElementById('cur-anim-label').textContent =
+    activeAnim !== null ? '✏️  Editing: ' + anims[activeAnim].name : 'No animation selected';
+}
+
+function renderAnimList() {
+  animList.innerHTML = '';
+  anims.forEach((a, i) => {
+    const el = document.createElement('div');
+    el.className = 'anim-item' + (a.frames.length ? ' has-frames' : '') + (i === activeAnim ? ' active' : '');
+    const dirIcon = {up:'⬆',down:'⬇',left:'⬅',right:'➡','':''}[a.dir]||'';
+    el.innerHTML = `<div class="anim-dot"></div><span class="anim-name">${dirIcon} ${a.name}</span><span class="anim-count">${a.frames.length}f</span><span class="anim-del" title="Delete" onclick="event.stopPropagation();deleteAnim(${i})">✕</span>`;
+    el.addEventListener('click', () => selectAnim(i));
+    animList.appendChild(el);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  PREVIEW
+// ══════════════════════════════════════════════════════════
+function updatePreview() {
+  stopPlay();
+  const strip = document.getElementById('frame-strip');
+  strip.innerHTML = '';
+
+  if (activeAnim === null || !anims[activeAnim]) {
+    drawPreviewBlank();
+    return;
+  }
+
+  const anim = anims[activeAnim];
+  document.getElementById('pi-name').textContent    = anim.name;
+  document.getElementById('pi-frames').textContent  = anim.frames.length;
+  document.getElementById('pi-fps').textContent     = document.getElementById('fps').value;
+  document.getElementById('pi-dir').textContent     = anim.dir || '—';
+  document.getElementById('pi-size').textContent    = `${FW}×${FH}`;
+
+  if (!img || !anim.frames.length) { drawPreviewBlank(); return; }
+
+  // Thumbnails
+  anim.frames.forEach((fr, fi) => {
+    const th = document.createElement('canvas');
+    const ts = 48;
+    th.width = ts; th.height = ts;
+    th.className = 'frame-thumb' + (fi === 0 ? ' active' : '');
+    const tc = th.getContext('2d');
+    tc.imageSmoothingEnabled = false;
+    tc.drawImage(img, fr.col * FW, fr.row * FH, FW, FH, 0, 0, ts, ts);
+    th.title = `Frame ${fi}: row ${fr.row}, col ${fr.col}`;
+    th.addEventListener('click', () => {
+      document.querySelectorAll('.frame-thumb').forEach(t => t.classList.remove('active'));
+      th.classList.add('active');
+      drawPreviewFrame(fr);
+    });
+    strip.appendChild(th);
+  });
+
+  drawPreviewFrame(anim.frames[0]);
+
+  // Auto-play if more than 1 frame
+  if (anim.frames.length > 1) startPlay();
+}
+
+function drawPreviewFrame(fr) {
+  if (!img) return;
+  prevCvs.width = 128; prevCvs.height = 128;
+  prevCtx.clearRect(0, 0, 128, 128);
+  prevCtx.imageSmoothingEnabled = false;
+  const scale = Math.min(128 / FW, 128 / FH);
+  const dw = FW * scale, dh = FH * scale;
+  const ox = (128 - dw) / 2, oy = (128 - dh) / 2;
+  prevCtx.drawImage(img, fr.col * FW, fr.row * FH, FW, FH, ox, oy, dw, dh);
+}
+
+function drawPreviewBlank() {
+  prevCvs.width = 128; prevCvs.height = 128;
+  prevCtx.clearRect(0, 0, 128, 128);
+  prevCtx.fillStyle = '#334155';
+  prevCtx.font = '11px system-ui';
+  prevCtx.fillText('Select frames', 8, 68);
+}
+
+// ══════════════════════════════════════════════════════════
+//  PLAYBACK
+// ══════════════════════════════════════════════════════════
+function startPlay() {
+  stopPlay();
+  if (activeAnim === null) return;
+  const anim = anims[activeAnim];
+  if (!anim || anim.frames.length < 2) return;
+  playing = true;
+  playFrame = 0;
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  const fps = parseInt(document.getElementById('fps').value) || 6;
+  playTimer = setInterval(() => {
+    playFrame = (playFrame + 1) % anim.frames.length;
+    const thumbs = document.querySelectorAll('.frame-thumb');
+    thumbs.forEach((t, i) => t.classList.toggle('active', i === playFrame));
+    drawPreviewFrame(anim.frames[playFrame]);
+  }, 1000 / fps);
+}
+
+function stopPlay() {
+  playing = false;
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  document.getElementById('btn-play').textContent = '▶ Play';
+}
+
+function togglePlay() {
+  if (playing) stopPlay(); else startPlay();
+}
+
+// ══════════════════════════════════════════════════════════
+//  IMPORT / EXPORT
+// ══════════════════════════════════════════════════════════
+function exportJSON() {
+  const fw = parseInt(document.getElementById('fw').value);
+  const fh = parseInt(document.getElementById('fh').value);
+  const cols = img ? Math.floor(img.width / fw) : null;
+
+  const out = {
+    _meta: {
+      tool: 'Secrets of Lerma — Sprite Mapper',
+      spritesheet: imgName,
+      frameWidth: fw,
+      frameHeight: fh,
+      sheetCols: cols,
+      sheetWidth:  img ? img.width  : null,
+      sheetHeight: img ? img.height : null,
+    },
+    animations: anims.map(a => ({
+      name: a.name,
+      direction: a.dir || null,
+      frames: a.frames.map(f => ({
+        row: f.row,
+        col: f.col,
+        // Phaser-friendly flat index:
+        index: f.row * (cols || Math.floor((img ? img.width : fw * 7) / fw)) + f.col,
+      })),
+    })),
+  };
+
+  const json = JSON.stringify(out, null, 2);
+  document.getElementById('json-io').value = json;
+
+  // Download
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (imgName.replace(/\.[^.]+$/, '') || 'spritesheet') + '.spritemap.json';
+  a.click();
+  setStatus('✅ Exported JSON — paste it into your project or use the download');
+}
+
+function importJSON() {
+  const raw = document.getElementById('json-io').value.trim();
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    if (data._meta) {
+      document.getElementById('fw').value = data._meta.frameWidth || 64;
+      document.getElementById('fh').value = data._meta.frameHeight || 64;
+    }
+    anims = (data.animations || []).map(a => ({
+      name: a.name,
+      dir: a.direction || '',
+      frames: (a.frames || []).map(f => ({ col: f.col, row: f.row })),
+    }));
+    activeAnim = anims.length ? 0 : null;
+    reloadGrid();
+    renderAnimList();
+    updatePreview();
+    setStatus('✅ Imported ' + anims.length + ' animations');
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════════
+function setStatus(msg) {
+  status.textContent = msg;
+}
+
+// Resize observer to keep canvas wrap size fresh
+new ResizeObserver(() => { if (img) redraw(); }).observe(wrap);
+</script>
+</body>
+</html>
