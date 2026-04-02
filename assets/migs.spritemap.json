@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "tool": "Secrets of Lerma — Sprite Mapper",
+    "spritesheet": "migs.png",
+    "frameWidth": 64,
+    "frameHeight": 64,
+    "sheetCols": 13,
+    "sheetWidth": 832,
+    "sheetHeight": 3456
+  },
+  "animations": [
+    {
+      "name": "idle_down",
+      "direction": "down",
+      "frames": [
+        { "row": 24, "col": 0, "index": 312 },
+        { "row": 24, "col": 1, "index": 313 }
+      ]
+    }
+  ]
+}

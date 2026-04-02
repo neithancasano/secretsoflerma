@@ -13,6 +13,19 @@
     migs:  {bodyColor:0xf59e0b,baseColor:0xfbbf24,labelColor:'#fde68a',scale:1.1},
   };
 
+  // ── Migs spritesheet config (verified via spritemap.html) ──────────────────
+  // Sheet: 832×3456px, 13 cols × 54 rows, 64×64px per frame
+  // idle_down = row 24, cols 0-1 → flat indices 312, 313
+  const MIGS_SHEET = {
+    frameWidth:  64,
+    frameHeight: 64,
+    scale: 1.5,          // display scale on the iso map
+    anims: {
+      idle_down: { frames: [312, 313], frameRate: 4, repeat: -1 },
+    },
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
   const STATE = {
     you:null,
     map:{w:60,h:40,tiles:null},
@@ -164,25 +177,67 @@
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
     const s=vis.scale||1;
     const isMigs=kind==='migs';
+
     if(!n){
-      const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
-      const body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
-      const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
-      const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
-      const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
-      const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
-      const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-      const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
-      const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
-      if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
-      const chatBubble=isMigs
-        ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
-        : null;
-      const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
-      if(chatBubble)children.push(chatBubble);
-      const container=scene.add.container(0,0,children);
-      container.setSize(isMigs?48:30,isMigs?48:30);
-      container.setInteractive();
+      let container, label, hpFill, body;
+
+      if(isMigs){
+        // ── Migs: sprite-based, verified frames from spritemap tool ──
+        const KEY = 'migs-sheet';
+        const cfg = MIGS_SHEET;
+
+        // Create idle_down animation once (idempotent guard)
+        if(!scene.anims.exists('migs-idle_down')){
+          scene.anims.create({
+            key: 'migs-idle_down',
+            frames: scene.anims.generateFrameNumbers(KEY, { frames: cfg.anims.idle_down.frames }),
+            frameRate: cfg.anims.idle_down.frameRate,
+            repeat: cfg.anims.idle_down.repeat,
+          });
+        }
+
+        const migSprite = scene.add.sprite(0, 0, KEY);
+        migSprite.setScale(cfg.scale);
+        migSprite.setOrigin(0.5, 1);   // anchor at feet
+        migSprite.play('migs-idle_down');
+
+        // Name label — sits above the sprite
+        const spriteH = cfg.frameHeight * cfg.scale;
+        label = scene.add.text(0, -spriteH - 2, name || 'Migs', {
+          fontSize:'10px', fontFamily:'system-ui,sans-serif',
+          color:'#fde68a', stroke:'#0b1020', strokeThickness:3, resolution:2,
+        }).setOrigin(0.5, 1);
+
+        // Chat bubble above label
+        const chatBubble = scene.add.text(0, -spriteH - 16, '💬', {
+          fontSize:'13px', resolution:2,
+        }).setOrigin(0.5, 1);
+
+        container = scene.add.container(0, 0, [migSprite, label, chatBubble]);
+        container.setSize(cfg.frameWidth * cfg.scale, spriteH);
+        container.setInteractive();
+
+        body    = migSprite;        // sprite ref for future flash effects
+        hpFill  = { width:0, x:0 }; // dummy — Migs has no HP bar
+
+      } else {
+        // ── All other NPCs: original shape-based rendering ──
+        const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
+        body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
+        const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
+        const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
+        const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
+        const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
+        label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
+        hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
+        const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
+        container=scene.add.container(0,0,children);
+        container.setSize(30,30);
+        container.setInteractive();
+      }
+
+      // ── Shared pointer events ──
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -204,12 +259,15 @@
         scene.game.canvas.classList.remove('migs-hover-cursor');
         scene.input.setDefaultCursor('default');
       });
+
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
+
     if(!isMigs&&hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
     n.tx=tx;n.ty=ty;
   }
+
   function removeNPC(id){const n=STATE.npcs.get(id);if(!n)return;n.sprite.destroy();STATE.npcs.delete(id);if(STATE.attackTarget===id)STATE.attackTarget=null;}
   function clearAllNPCs(){for(const n of STATE.npcs.values())n.sprite.destroy();STATE.npcs.clear();}
   function clearAllPlayers(){for(const p of STATE.players.values())p.sprite.destroy();STATE.players.clear();}
@@ -241,6 +299,14 @@
   class MainScene extends Phaser.Scene {
     constructor(){super('main');}
 
+    preload(){
+      // Load Migs's spritesheet — dimensions verified via spritemap.html
+      this.load.spritesheet('migs-sheet', '/secretsoflerma/assets/migs.png', {
+        frameWidth:  MIGS_SHEET.frameWidth,
+        frameHeight: MIGS_SHEET.frameHeight,
+      });
+    }
+
     create(){
       this.cameras.main.setBackgroundColor('#0b1020');
       this.scale.resize(window.innerWidth,window.innerHeight);
@@ -262,7 +328,11 @@
       this.input.on('pointerdown',(pointer)=>{
         if(STATE.clickConsumed){STATE.clickConsumed=false;return;}
         if(STATE.migsOpen){closeMigsMenu();return;}
-        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())n.body.setStrokeStyle(0);}
+        if(STATE.attackTarget){
+          STATE.attackTarget=null;
+          this.net.send({t:'CANCEL_ATTACK'});
+          for(const n of STATE.npcs.values())if(n.body&&n.body.setStrokeStyle)n.body.setStrokeStyle(0);
+        }
         const cam=this.cameras.main;
         const worldX=pointer.x+cam.scrollX,worldY=pointer.y+cam.scrollY;
         const{tx,ty}=screenToTile(worldX,worldY);
@@ -370,14 +440,20 @@
       }
       if(msg.t==='NPC_HIT'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;
-        n.body.setFillStyle(0xff0000);
-        setTimeout(()=>{if(n.body)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
+        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);
+        if(n.hpFill&&n.hpFill.width!==undefined&&n.hpFill.x!==undefined){n.hpFill.width=30*pct;n.hpFill.x=-15;}
+        if(n.body&&n.body.setTintFill)n.body.setTintFill(0xff0000);
+        else if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xff0000);
+        setTimeout(()=>{
+          if(!n.body)return;
+          if(n.body.clearTint)n.body.clearTint();
+          else if(n.body.setFillStyle)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);
+        },120);
         spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);return;
       }
       if(msg.t==='NPC_DIED'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.body.setFillStyle(0xffffff);
+        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xffffff);
         this.time.delayedCall(200,()=>removeNPC(msg.npcId));return;
       }
       if(msg.t==='NPC_SPAWN'){
