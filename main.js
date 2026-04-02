@@ -247,6 +247,8 @@
       this.scale.resize(window.innerWidth,window.innerHeight);
       window.addEventListener('resize',()=>{this.scale.resize(window.innerWidth,window.innerHeight);this.recomputeOrigin();this.drawTileMap();});
       this.tileGraphics=this.add.graphics();
+      this.portalEffects=[];
+      this.createPortalParticleTexture();
       this.recomputeOrigin();
       this.net=window.LERMA_NET.connect((msg)=>this.onNet(msg));
 
@@ -289,11 +291,54 @@
           g.lineStyle(1,colors.stroke,0.6);g.strokePoints([top,right,bottom,left,top],false);
         }
       }
+      this.refreshPortalEffects();
+    }
+
+    createPortalParticleTexture(){
+      if(this.textures.exists('portal-particle'))return;
+      const dot=this.make.graphics({x:0,y:0,add:false});
+      dot.fillStyle(0xffffff,1);
+      dot.fillCircle(4,4,4);
+      dot.generateTexture('portal-particle',8,8);
+      dot.destroy();
+    }
+
+    clearPortalEffects(){
+      for(const fx of this.portalEffects){
+        fx.glow.destroy();
+        fx.outerRing.destroy();
+        fx.innerRing.destroy();
+        fx.particles.destroy();
+      }
+      this.portalEffects.length=0;
+    }
+
+    refreshPortalEffects(){
+      this.clearPortalEffects();
       for(const portal of STATE.portals){
         const c=tileToScreen(portal.x,portal.y);
-        const g2=this.tileGraphics;
-        g2.fillStyle(0xa3e635,0.5);
-        g2.fillPoints([{x:c.x,y:c.y-ISO_H/2},{x:c.x+ISO_W/2,y:c.y},{x:c.x,y:c.y+ISO_H/2},{x:c.x-ISO_W/2,y:c.y}],true);
+        const glow=this.add.ellipse(c.x,c.y+4,ISO_W*0.9,ISO_H*0.56,0x5BFF8B,0.25).setDepth(1);
+        const outerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.8,ISO_H*0.42).setStrokeStyle(2,0xB6FF77,0.9).setDepth(2);
+        const innerRing=this.add.ellipse(c.x,c.y-3,ISO_W*0.56,ISO_H*0.26).setStrokeStyle(2,0xE6FFB2,0.9).setDepth(2);
+        const particles=this.add.particles(c.x,c.y-6,'portal-particle',{
+          x:{min:-ISO_W*0.22,max:ISO_W*0.22},
+          y:{min:-ISO_H*0.14,max:ISO_H*0.14},
+          speedY:{min:-45,max:-12},
+          speedX:{min:-14,max:14},
+          scale:{start:0.75,end:0},
+          alpha:{start:0.95,end:0},
+          tint:[0x76FF91,0xB8FF96,0xE8FFC4],
+          lifespan:{min:600,max:1100},
+          frequency:34,
+          blendMode:'ADD',
+          rotate:{min:0,max:360},
+        }).setDepth(3);
+
+        this.tweens.add({targets:outerRing,angle:360,duration:2200,ease:'Linear',repeat:-1});
+        this.tweens.add({targets:innerRing,angle:-360,duration:1700,ease:'Linear',repeat:-1});
+        this.tweens.add({targets:glow,alpha:{from:0.15,to:0.42},duration:900,yoyo:true,ease:'Sine.easeInOut',repeat:-1});
+
+        this.portalEffects.push({glow,outerRing,innerRing,particles});
       }
     }
 
