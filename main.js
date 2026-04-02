@@ -159,30 +159,89 @@
   function removePlayer(id){const p=STATE.players.get(id);if(!p)return;p.sprite.destroy();STATE.players.delete(id);}
   function setPlayerVisual(p){const isYou=p.id===STATE.you;const color=isYou?0xa3e635:0x7dd3fc;p.sprite.list[0].fillColor=color;p.sprite.list[1].fillColor=color;if(p.label)p.label.setColor(isYou?'#a3e635':'#e2e8f0');}
 
+  // ── LPC spritesheet constants for Migs ──────────────────────────────────────
+  // Sheet: 64×64 px per frame, 7 cols wide, 31 rows tall
+  // Row 23 (0-indexed) = idle facing down (south) — 2 frames
+  const MIGS_FRAME_W = 64;
+  const MIGS_FRAME_H = 64;
+  const MIGS_IDLE_ROW = 23;          // idle-down row in the expanded LPC layout
+  const MIGS_IDLE_FRAMES = 2;        // LPC idle has 2 frames per direction
+  const MIGS_SCALE = 1.5;            // display scale so he's visible on the iso map
+  // ────────────────────────────────────────────────────────────────────────────
+
   function upsertNPC(scene,id,tx,ty,name,kind,hp,maxHp){
     let n=STATE.npcs.get(id);
     const vis=NPC_VISUALS[kind]||NPC_VISUALS.poring;
     const s=vis.scale||1;
     const isMigs=kind==='migs';
+
     if(!n){
-      const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
-      const body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
-      const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
-      const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
-      const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
-      const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
-      const label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
-      const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
-      const hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
-      if(isMigs){hpBg.setVisible(false);hpFill.setVisible(false);}
-      const chatBubble=isMigs
-        ? scene.add.text(0,-38*s,'💬',{fontSize:'14px',resolution:2}).setOrigin(0.5,1)
-        : null;
-      const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
-      if(chatBubble)children.push(chatBubble);
-      const container=scene.add.container(0,0,children);
-      container.setSize(isMigs?48:30,isMigs?48:30);
-      container.setInteractive();
+      let container, label, hpFill, body;
+
+      if(isMigs){
+        // ── Migs: sprite-based with LPC idle animation ──
+        const spriteKey='migs-sheet';
+
+        // Register idle-down animation once (idempotent)
+        if(!scene.anims.exists('migs-idle')){
+          // Build frame array from the row: row 23, columns 0..1
+          const frames=[];
+          for(let f=0;f<MIGS_IDLE_FRAMES;f++){
+            frames.push({
+              frame: MIGS_IDLE_ROW * 7 + f   // Phaser numbers frames left-to-right, top-to-bottom
+            });
+          }
+          scene.anims.create({
+            key:'migs-idle',
+            frames: scene.anims.generateFrameNumbers(spriteKey,{frames:frames.map(f=>f.frame)}),
+            frameRate:4,   // slow gentle idle bob
+            repeat:-1,
+          });
+        }
+
+        const migSprite=scene.add.sprite(0,0,spriteKey);
+        migSprite.setScale(MIGS_SCALE);
+        migSprite.setOrigin(0.5,1);       // anchor at feet
+        migSprite.play('migs-idle');
+
+        // Name label above sprite
+        label=scene.add.text(0,-MIGS_FRAME_H*MIGS_SCALE-4,name||'Migs',{
+          fontSize:'10px',fontFamily:'system-ui,sans-serif',
+          color:'#fde68a',stroke:'#0b1020',strokeThickness:3,resolution:2
+        }).setOrigin(0.5,1);
+
+        // Chat bubble emoji
+        const chatBubble=scene.add.text(0,-MIGS_FRAME_H*MIGS_SCALE-18,'💬',{
+          fontSize:'13px',resolution:2
+        }).setOrigin(0.5,1);
+
+        container=scene.add.container(0,0,[migSprite,label,chatBubble]);
+        container.setSize(MIGS_FRAME_W*MIGS_SCALE, MIGS_FRAME_H*MIGS_SCALE);
+        container.setInteractive();
+
+        // We store migSprite as `body` so the hit-flash code has a reference
+        body=migSprite;
+        // hpFill is unused for Migs but we give it a dummy so downstream code is happy
+        hpFill={width:0,x:0};
+
+      } else {
+        // ── Other NPCs: original shape-based rendering ──
+        const base=scene.add.ellipse(0,0,22*s,14*s,vis.baseColor).setOrigin(0.5,0.5);
+        body=scene.add.ellipse(0,-8*s,16*s,16*s,vis.bodyColor).setOrigin(0.5,0.5);
+        const eyeL=scene.add.circle(-4*s,-10*s,2*s,0xffffff);
+        const eyeR=scene.add.circle(4*s,-10*s,2*s,0xffffff);
+        const pupL=scene.add.circle(-4*s,-10*s,1*s,0x222222);
+        const pupR=scene.add.circle(4*s,-10*s,1*s,0x222222);
+        label=scene.add.text(0,-26*s,name||kind,{fontSize:'10px',fontFamily:'system-ui,sans-serif',color:vis.labelColor,stroke:'#0b1020',strokeThickness:3,resolution:2}).setOrigin(0.5,1);
+        const hpBg=scene.add.rectangle(0,-38*s,30,4,0x333333).setOrigin(0.5,0.5);
+        hpFill=scene.add.rectangle(-15,-38*s,30,4,0xff4444).setOrigin(0,0.5);
+        const children=[base,body,eyeL,eyeR,pupL,pupR,hpBg,hpFill,label];
+        container=scene.add.container(0,0,children);
+        container.setSize(30,30);
+        container.setInteractive();
+      }
+
+      // ── Shared interaction handlers ──
       container.on('pointerdown',()=>{
         STATE.clickConsumed=true;
         if(isMigs){
@@ -204,9 +263,11 @@
         scene.game.canvas.classList.remove('migs-hover-cursor');
         scene.input.setDefaultCursor('default');
       });
+
       n={id,tx,ty,rx:tx,ry:ty,sprite:container,label,hpFill,body,kind,hp:hp||50,maxHp:maxHp||50};
       STATE.npcs.set(id,n);
     }
+
     if(!isMigs&&hp!==undefined){n.hp=hp;n.maxHp=maxHp||n.maxHp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;n.hpFill.x=-15;}
     n.tx=tx;n.ty=ty;
   }
@@ -242,6 +303,14 @@
   class MainScene extends Phaser.Scene {
     constructor(){super('main');}
 
+    preload(){
+      // Load Migs's LPC spritesheet — 64×64 px per frame
+      this.load.spritesheet('migs-sheet','/secretsoflerma/assets/migs.png',{
+        frameWidth:  MIGS_FRAME_W,
+        frameHeight: MIGS_FRAME_H,
+      });
+    }
+
     create(){
       this.cameras.main.setBackgroundColor('#0b1020');
       this.scale.resize(window.innerWidth,window.innerHeight);
@@ -263,7 +332,7 @@
       this.input.on('pointerdown',(pointer)=>{
         if(STATE.clickConsumed){STATE.clickConsumed=false;return;}
         if(STATE.migsOpen){closeMigsMenu();return;}
-        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())n.body.setStrokeStyle(0);}
+        if(STATE.attackTarget){STATE.attackTarget=null;this.net.send({t:'CANCEL_ATTACK'});for(const n of STATE.npcs.values())if(n.body&&n.body.setStrokeStyle)n.body.setStrokeStyle(0);}
         const cam=this.cameras.main;
         const worldX=pointer.x+cam.scrollX,worldY=pointer.y+cam.scrollY;
         const{tx,ty}=screenToTile(worldX,worldY);
@@ -395,16 +464,17 @@
 
       if(msg.t==='NPC_HIT'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);n.hpFill.width=30*pct;
-        n.body.setFillStyle(0xff0000);
-        setTimeout(()=>{if(n.body)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
+        n.hp=msg.hp;const pct=Math.max(0,n.hp/n.maxHp);
+        if(n.hpFill&&n.hpFill.width!==undefined)n.hpFill.width=30*pct;
+        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xff0000);
+        setTimeout(()=>{if(n.body&&n.body.setFillStyle)n.body.setFillStyle(NPC_VISUALS[n.kind]?.bodyColor||0xff6eb4);},120);
         spawnDmgNumber(this,n.sprite.x,n.sprite.y,msg.dmg,msg.isCrit?'#ffff00':'#ff4444',msg.isCrit);
         return;
       }
 
       if(msg.t==='NPC_DIED'){
         const n=STATE.npcs.get(msg.npcId);if(!n)return;
-        n.body.setFillStyle(0xffffff);
+        if(n.body&&n.body.setFillStyle)n.body.setFillStyle(0xffffff);
         this.time.delayedCall(200,()=>removeNPC(msg.npcId));
         return;
       }
