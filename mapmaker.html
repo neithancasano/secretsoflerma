@@ -657,14 +657,16 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   const allZones = Object.values(zones);
   setStatus(`Downloading ${allZones.length} zone files + zones.js…`);
 
+  // Download zones.js first so it isn't blocked if the browser limits
+  // large batches of automatic downloads from one click gesture.
+  triggerDownload('zones.js', buildZonesJS(), 'text/javascript');
+  await new Promise(r => setTimeout(r, 120));
+
   // Download every zone JSON (builtin + custom)
   for (const z of allZones) {
     triggerDownload(`${z.id}.json`, zoneToJSON(z), 'application/json');
     await new Promise(r => setTimeout(r, 80));
   }
-
-  // Download zones.js (not zones_export.js — just zones.js, ready to drop in)
-  triggerDownload('zones.js', buildZonesJS(), 'text/javascript');
 
   setStatus(`Done! ${allZones.length} JSONs + zones.js downloaded. Upload to both repos, then pm2 restart all.`);
 });
