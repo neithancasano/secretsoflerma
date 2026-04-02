@@ -18,8 +18,6 @@ body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:10
 #status-bar{padding:3px 14px;font-size:11px;color:#64748b;background:#090e1a;flex-shrink:0;display:flex;gap:12px;align-items:center}
 #autosave-indicator{color:#4ade80;font-size:10px}
 #main{display:flex;flex:1;overflow:hidden}
-
-/* Left: world map + zone list */
 #world-panel{width:240px;flex-shrink:0;background:#0f172a;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden}
 #world-panel-header{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;padding:6px 10px 4px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between;align-items:center}
 #world-panel-header span{color:#475569;font-size:9px;text-transform:none;letter-spacing:0}
@@ -33,15 +31,12 @@ body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:10
 .zone-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .zone-item .zone-label{flex:1;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zone-item .zone-badges{font-size:9px;color:#f59e0b;white-space:nowrap}
-
-/* Center: tile editor */
+.zone-item .zone-custom{font-size:9px;color:#60a5fa}
 #editor{flex:1;display:flex;flex-direction:column;overflow:hidden}
 #canvas-wrap{flex:1;overflow:auto;background:#090e1a;position:relative}
 #map-canvas{display:block;cursor:crosshair;image-rendering:pixelated}
 #no-zone-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#334155;font-size:13px}
-
-/* Right: portals, migs, export */
-#right-panel{width:210px;flex-shrink:0;background:#0f172a;border-left:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden}
+#right-panel{width:210px;flex-shrink:0;background:#0f172a;border-left:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden;overflow-y:auto}
 .rp-section{border-bottom:1px solid #1e293b}
 .rp-title{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px 4px;display:flex;justify-content:space-between;align-items:center}
 .rp-title .rp-hint{font-size:9px;color:#334155;text-transform:none;letter-spacing:0}
@@ -50,16 +45,16 @@ body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:10
 .del-btn{background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0}
 .del-btn:hover{color:#fca5a5}
 .no-items{padding:5px 10px;font-size:10px;color:#334155;font-style:italic}
-.export-section{padding:8px;display:flex;flex-direction:column;gap:6px;margin-top:auto;border-top:1px solid #1e293b}
+.rp-id{padding:4px 10px;font-size:10px;color:#475569;font-family:monospace;background:#090e1a;word-break:break-all}
+.export-section{padding:8px;display:flex;flex-direction:column;gap:6px;border-top:1px solid #1e293b}
 .export-btn{padding:6px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;font-weight:600;text-align:center}
 .export-btn.primary{background:#1a3a1a;border-color:#166534;color:#4ade80}
 .export-btn.primary:hover{background:#166534}
 .export-btn.secondary{background:#0f172a;border-color:#1e293b;color:#64748b}
 .export-btn.secondary:hover{background:#1e293b;color:#94a3b8}
-.workflow-box{background:#0a1628;border:1px solid #1e3a5c;border-radius:6px;padding:8px;font-size:10px;color:#475569;line-height:1.6}
+.workflow-box{background:#0a1628;border:1px solid #1e3a5c;border-radius:6px;padding:8px;font-size:10px;color:#475569;line-height:1.7}
 .workflow-box b{color:#60a5fa}
-
-/* Modal */
+.workflow-box code{background:#0f172a;color:#a3e635;padding:1px 4px;border-radius:3px;font-size:9px}
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:none;align-items:center;justify-content:center}
 #modal-overlay.open{display:flex}
 #modal{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;width:340px}
@@ -117,33 +112,37 @@ body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:10
 
   <div id="right-panel">
     <div class="rp-section">
-      <div class="rp-title">Portals <span class="rp-hint">select 🔮 Portal then click tile</span></div>
+      <div class="rp-title">Zone ID <span class="rp-hint">filename on disk</span></div>
+      <div class="rp-id" id="rp-zone-id">—</div>
+    </div>
+    <div class="rp-section">
+      <div class="rp-title">Portals <span class="rp-hint">🔮 then click tile</span></div>
       <div id="portal-list"></div>
     </div>
     <div class="rp-section">
-      <div class="rp-title">Migs NPC <span class="rp-hint">select 👤 Migs then click tile</span></div>
+      <div class="rp-title">Migs NPC <span class="rp-hint">👤 then click tile</span></div>
       <div id="migs-section"></div>
     </div>
     <div class="rp-section" style="padding:8px 10px">
       <div class="workflow-box">
-        <b>How to save a map:</b><br>
-        1. Edit tiles, portals, Migs<br>
-        2. Click <b>⬇ Download All JSONs</b><br>
-        3. Upload the <b>.json</b> files to <b>secretsoflerma/zones/</b> (frontend) and <b>secretsoflerma-server/zones/</b> (backend)<br>
-        4. Upload <b>zones_export.js</b> → replace <b>zones.js</b> on server<br>
-        5. Restart server with <b>pm2 restart all</b>
+        <b>How to deploy a map:</b><br>
+        1. Paint tiles, place portals &amp; Migs<br>
+        2. <b>⬇ Download All</b> — saves every zone's <code>.json</code> + a <code>zones.js</code><br>
+        3. Upload <code>.json</code> files → <b>both</b> repos under <code>zones/</code><br>
+        4. Upload <code>zones.js</code> → server repo root (replaces old one)<br>
+        5. SSH → <code>git pull</code> → <code>pm2 restart all</code>
       </div>
     </div>
     <div class="export-section">
-      <button class="export-btn primary" id="export-btn">⬇ Download All JSONs + zones.js</button>
+      <button class="export-btn primary" id="export-btn">⬇ Download All (JSONs + zones.js)</button>
       <button class="export-btn secondary" id="copy-btn">📋 Copy current zone JSON</button>
-      <button class="export-btn secondary" id="clear-storage-btn" style="color:#ef4444;border-color:#450a0a">🗑 Clear saved layout</button>
+      <button class="export-btn secondary" id="clear-storage-btn" style="color:#ef4444;border-color:#450a0a">🗑 Reset saved layout</button>
     </div>
   </div>
 </div>
 
 <div id="status-bar">
-  <span id="status-text">Ready — select a zone to start editing</span>
+  <span id="status-text">Loading zones…</span>
   <span id="autosave-indicator"></span>
 </div>
 
@@ -166,14 +165,13 @@ body{background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif;height:10
 // CONSTANTS
 // ════════════════════════════════════════════════════
 const MAP_W = 60, MAP_H = 40, CELL = 14;
-const COLS = 8, ROWS = 6; // world grid dimensions
-const LS_KEY = 'lerma_mapmaker_v2';
+const COLS = 8, ROWS = 6;
+const LS_KEY = 'lerma_mapmaker_v3';
 
 const TILE_COLORS  = { 0:'#2d5a1b', 1:'#8B6914', 2:'#1a3a6e', 3:'#555566' };
 const TILE_BORDERS = { 0:'#245016', 1:'#7a5c10', 2:'#152e58', 3:'#444455' };
 const ZONE_HUE = ['#4ade80','#60a5fa','#f59e0b','#e879f9','#f87171','#34d399','#fb923c','#a78bfa','#67e8f9','#fcd34d'];
 
-// Built-in zone definitions (9 barangays)
 const BUILTIN_IDS = ['lerma','panganiban','plaza_rizal','diversion','tabuco','bagumbayan','liboton','francia','san_felipe'];
 const BUILTIN_NAMES = {
   lerma:'Barangay Lerma', panganiban:'Panganiban', plaza_rizal:'Plaza Rizal',
@@ -201,29 +199,28 @@ const DEFAULT_MIGS = {lerma:{x:30,y:20},plaza_rizal:{x:30,y:20},francia:{x:30,y:
 // ════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════
-let zones   = {};   // id -> { id, name, tiles[], blocked:Set, portals[], migs, layout:{col,row} }
-let current = null; // active zone id
+let zones   = {};
+let current = null;
 let paintMode = 0;
 let painting  = false;
 let pendingPortal = null;
-
-// World map drag state
-let wDrag = null; // {id, startCol, startRow, mouseCol, mouseRow}
+let wDrag = null;
 
 // ════════════════════════════════════════════════════
 // DOM
 // ════════════════════════════════════════════════════
-const mapCanvas   = document.getElementById('map-canvas');
-const ctx         = mapCanvas.getContext('2d');
-const worldCanvas = document.getElementById('world-map-canvas');
-const wctx        = worldCanvas.getContext('2d');
-const zoneListEl  = document.getElementById('zone-list');
-const portalListEl= document.getElementById('portal-list');
-const migsSectionEl=document.getElementById('migs-section');
-const statusText  = document.getElementById('status-text');
-const autosaveEl  = document.getElementById('autosave-indicator');
-const nameInput   = document.getElementById('tb-zone-name');
-const noZoneMsg   = document.getElementById('no-zone-msg');
+const mapCanvas    = document.getElementById('map-canvas');
+const ctx          = mapCanvas.getContext('2d');
+const worldCanvas  = document.getElementById('world-map-canvas');
+const wctx         = worldCanvas.getContext('2d');
+const zoneListEl   = document.getElementById('zone-list');
+const portalListEl = document.getElementById('portal-list');
+const migsSectionEl= document.getElementById('migs-section');
+const statusText   = document.getElementById('status-text');
+const autosaveEl   = document.getElementById('autosave-indicator');
+const nameInput    = document.getElementById('tb-zone-name');
+const noZoneMsg    = document.getElementById('no-zone-msg');
+const rpZoneId     = document.getElementById('rp-zone-id');
 
 mapCanvas.width  = MAP_W * CELL;
 mapCanvas.height = MAP_H * CELL;
@@ -233,20 +230,28 @@ const cellW = Math.floor(WCW / COLS);
 const cellH = Math.floor(WCH / ROWS);
 
 // ════════════════════════════════════════════════════
-// PERSISTENCE — localStorage
+// HELPERS
+// ════════════════════════════════════════════════════
+// Convert a zone name to a safe file ID: "My Zone" → "my_zone"
+function nameToId(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'zone_' + Date.now();
+}
+
+function findFreeCell() {
+  const occupied = new Set(Object.values(zones).map(z => `${z.layout.col},${z.layout.row}`));
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (!occupied.has(`${c},${r}`)) return { col: c, row: r };
+  return { col: 0, row: ROWS - 1 };
+}
+
+// ════════════════════════════════════════════════════
+// PERSISTENCE
 // ════════════════════════════════════════════════════
 function saveToLS() {
   const data = {};
   for (const [id, z] of Object.entries(zones)) {
-    data[id] = {
-      id: z.id,
-      name: z.name,
-      tiles: z.tiles,
-      blocked: [...z.blocked],
-      portals: z.portals,
-      migs: z.migs,
-      layout: z.layout,
-    };
+    data[id] = { id:z.id, name:z.name, tiles:z.tiles, blocked:[...z.blocked], portals:z.portals, migs:z.migs, layout:z.layout };
   }
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(data));
@@ -262,22 +267,17 @@ function loadFromLS() {
     const data = JSON.parse(raw);
     const result = {};
     for (const [id, z] of Object.entries(data)) {
-      result[id] = {
-        ...z,
-        blocked: new Set(z.blocked || []),
-        portals: z.portals || [],
-        layout: z.layout || { col: 0, row: 4 },
-      };
+      result[id] = { ...z, blocked: new Set(z.blocked || []), portals: z.portals || [], layout: z.layout || findFreeCell() };
     }
     return result;
   } catch(e) { return null; }
 }
 
 // ════════════════════════════════════════════════════
-// INIT — load zone JSONs then restore LS layout
+// INIT
 // ════════════════════════════════════════════════════
 async function loadZones() {
-  // First load tile data from server
+  // 1. Seed builtin zones with server tile data
   for (const id of BUILTIN_IDS) {
     let tiles = new Array(MAP_W * MAP_H).fill(0);
     try {
@@ -286,31 +286,30 @@ async function loadZones() {
       tiles = Array.from(data.tiles);
     } catch(e) {}
     zones[id] = {
-      id, name: BUILTIN_NAMES[id] || id,
-      tiles,
+      id, name: BUILTIN_NAMES[id] || id, tiles,
       blocked: new Set(),
       portals: (DEFAULT_PORTALS[id] || []).map(p => ({...p})),
       migs: DEFAULT_MIGS[id] ? {...DEFAULT_MIGS[id]} : null,
-      layout: DEFAULT_LAYOUT[id] || { col: 0, row: 4 },
+      layout: DEFAULT_LAYOUT[id] || findFreeCell(),
+      builtin: true,
     };
   }
 
-  // Restore saved state (names, layouts, portals, migs edits) from localStorage
+  // 2. Restore from localStorage — merges edits AND adds custom zones
   const saved = loadFromLS();
   if (saved) {
     for (const [id, s] of Object.entries(saved)) {
       if (zones[id]) {
-        // merge: keep fresh tiles from server, restore everything else
+        // Builtin: restore edits but keep fresh server tiles unless user painted them
         zones[id].name    = s.name;
         zones[id].portals = s.portals;
         zones[id].migs    = s.migs;
         zones[id].layout  = s.layout;
         zones[id].blocked = s.blocked;
-        // Only restore tiles from LS if they were explicitly saved (non-default)
         if (s.tiles && s.tiles.some(t => t !== 0)) zones[id].tiles = s.tiles;
       } else {
-        // Custom zone created in mapmaker
-        zones[id] = { ...s, blocked: new Set(s.blocked || []) };
+        // ★ Custom zone — restore fully from localStorage
+        zones[id] = { ...s, blocked: new Set(s.blocked || []), builtin: false };
       }
     }
   }
@@ -318,11 +317,11 @@ async function loadZones() {
   renderZoneList();
   drawWorldMap();
   selectZone('lerma');
-  setStatus('Loaded! Edit tiles, then Download All JSONs when done.');
+  setStatus('Ready! Select a zone to edit, then Download All when done.');
 }
 
 // ════════════════════════════════════════════════════
-// PAINT MODE BUTTONS
+// PAINT MODE
 // ════════════════════════════════════════════════════
 document.querySelectorAll('.tb-btn[data-tile]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -347,46 +346,60 @@ function selectZone(id) {
   current = id;
   nameInput.value = zones[id].name;
   noZoneMsg.style.display = 'none';
+  rpZoneId.textContent = id + '.json';
   renderZoneList();
   renderEditor();
   renderRightPanel();
   drawWorldMap();
-  setStatus(`Editing: ${zones[id].name}`);
+  setStatus(`Editing: ${zones[id].name} (${id}.json)`);
 }
 
 document.getElementById('btn-save-meta').addEventListener('click', () => {
   if (!current) return;
-  zones[current].name = nameInput.value.trim() || zones[current].name;
+  const newName = nameInput.value.trim();
+  if (!newName) return;
+  zones[current].name = newName;
+  // For custom zones, also update the ID to match the name so the filename is clean
+  if (!zones[current].builtin) {
+    const newId = nameToId(newName);
+    if (newId !== current && !zones[newId]) {
+      zones[newId] = { ...zones[current], id: newId };
+      delete zones[current];
+      current = newId;
+      rpZoneId.textContent = newId + '.json';
+    }
+  }
   renderZoneList(); drawWorldMap(); saveToLS();
-  setStatus('Zone renamed!');
+  setStatus(`Renamed! File will be saved as: ${current}.json`);
 });
 
 document.getElementById('btn-new-zone').addEventListener('click', () => {
-  const id = 'zone_' + Date.now();
-  // Find a free grid cell
-  const occupied = new Set(Object.values(zones).map(z => `${z.layout.col},${z.layout.row}`));
-  let col = 0, row = 5;
-  outer: for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-    if (!occupied.has(`${c},${r}`)) { col = c; row = r; break outer; }
-  }
-  zones[id] = { id, name: 'New Zone', tiles: new Array(MAP_W * MAP_H).fill(0), blocked: new Set(), portals: [], migs: null, layout: { col, row } };
+  const cell = findFreeCell();
+  // Use a temp numeric id; rename will clean it up when user sets name
+  const id = 'new_zone_' + Object.keys(zones).length;
+  zones[id] = { id, name: 'New Zone', tiles: new Array(MAP_W * MAP_H).fill(0), blocked: new Set(), portals: [], migs: null, layout: cell, builtin: false };
   saveToLS(); renderZoneList(); drawWorldMap(); selectZone(id);
-  setStatus('New zone created — drag it on the world map to position it!');
+  setStatus('New zone created! Type a name above and click ✓ Rename to set the file ID.');
 });
 
 document.getElementById('btn-del-zone').addEventListener('click', () => {
   if (!current) return;
-  if (!confirm(`Delete zone "${zones[current].name}"?`)) return;
+  if (!confirm(`Delete zone "${zones[current].name}"? This cannot be undone.`)) return;
   delete zones[current];
   const remaining = Object.keys(zones);
   current = remaining.length ? remaining[0] : null;
   saveToLS(); renderZoneList(); drawWorldMap();
   if (current) selectZone(current);
-  else { ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height); portalListEl.innerHTML = ''; migsSectionEl.innerHTML = ''; noZoneMsg.style.display = 'flex'; }
+  else {
+    ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+    portalListEl.innerHTML = ''; migsSectionEl.innerHTML = '';
+    noZoneMsg.style.display = 'flex';
+    rpZoneId.textContent = '—';
+  }
 });
 
 // ════════════════════════════════════════════════════
-// ZONE LIST (sidebar)
+// ZONE LIST
 // ════════════════════════════════════════════════════
 function renderZoneList() {
   zoneListEl.innerHTML = '';
@@ -395,14 +408,15 @@ function renderZoneList() {
     item.className = 'zone-item' + (current === z.id ? ' active' : '');
     const color = ZONE_HUE[i % ZONE_HUE.length];
     const badges = (z.migs ? '👤' : '') + (z.portals.length ? ` 🔮×${z.portals.length}` : '');
-    item.innerHTML = `<div class="zone-dot" style="background:${color}"></div><span class="zone-label">${z.name}</span><span class="zone-badges">${badges}</span>`;
+    const customTag = z.builtin ? '' : '<span class="zone-custom">✦ custom</span>';
+    item.innerHTML = `<div class="zone-dot" style="background:${color}"></div><span class="zone-label">${z.name}</span>${customTag}<span class="zone-badges">${badges}</span>`;
     item.addEventListener('click', () => selectZone(z.id));
     zoneListEl.appendChild(item);
   });
 }
 
 // ════════════════════════════════════════════════════
-// WORLD MAP — drag to reposition zones
+// WORLD MAP — drag to reposition
 // ════════════════════════════════════════════════════
 function zoneAtCell(col, row) {
   return Object.values(zones).find(z => z.layout.col === col && z.layout.row === row) || null;
@@ -413,126 +427,85 @@ function drawWorldMap() {
   wctx.fillStyle = '#090e1a';
   wctx.fillRect(0, 0, WCW, WCH);
 
-  // Grid lines
-  wctx.strokeStyle = '#1a2540';
-  wctx.lineWidth = 0.5;
-  for (let c = 0; c <= COLS; c++) { wctx.beginPath(); wctx.moveTo(c * cellW, 0); wctx.lineTo(c * cellW, WCH); wctx.stroke(); }
-  for (let r = 0; r <= ROWS; r++) { wctx.beginPath(); wctx.moveTo(0, r * cellH); wctx.lineTo(WCW, r * cellH); wctx.stroke(); }
+  wctx.strokeStyle = '#1a2540'; wctx.lineWidth = 0.5;
+  for (let c = 0; c <= COLS; c++) { wctx.beginPath(); wctx.moveTo(c*cellW,0); wctx.lineTo(c*cellW,WCH); wctx.stroke(); }
+  for (let r = 0; r <= ROWS; r++) { wctx.beginPath(); wctx.moveTo(0,r*cellH); wctx.lineTo(WCW,r*cellH); wctx.stroke(); }
 
-  // Portal connections (draw first, under zones)
+  // Portal lines
   for (const z of Object.values(zones)) {
     for (const p of z.portals) {
-      const dest = zones[p.destZone];
-      if (!dest) continue;
-      const sx = z.layout.col * cellW + cellW / 2;
-      const sy = z.layout.row * cellH + cellH / 2;
-      const dx = dest.layout.col * cellW + cellW / 2;
-      const dy = dest.layout.row * cellH + cellH / 2;
-      wctx.strokeStyle = 'rgba(96,165,250,0.25)';
-      wctx.lineWidth = 1.5;
-      wctx.beginPath(); wctx.moveTo(sx, sy); wctx.lineTo(dx, dy); wctx.stroke();
+      const dest = zones[p.destZone]; if (!dest) continue;
+      const sx = z.layout.col*cellW+cellW/2, sy = z.layout.row*cellH+cellH/2;
+      const dx = dest.layout.col*cellW+cellW/2, dy = dest.layout.row*cellH+cellH/2;
+      wctx.strokeStyle = 'rgba(96,165,250,0.2)'; wctx.lineWidth = 1.5;
+      wctx.beginPath(); wctx.moveTo(sx,sy); wctx.lineTo(dx,dy); wctx.stroke();
     }
   }
 
   // Zone cells
-  for (const [i, z] of Object.values(zones).entries()) {
-    const { col, row } = wDrag && wDrag.id === z.id
-      ? { col: wDrag.mouseCol, row: wDrag.mouseRow }
-      : z.layout;
-
-    const x = col * cellW + 2, y = row * cellH + 2, w = cellW - 4, h = cellH - 4;
-    const isActive = z.id === current;
+  Object.values(zones).forEach((z, i) => {
+    const layout = (wDrag && wDrag.id === z.id) ? { col: wDrag.mouseCol, row: wDrag.mouseRow } : z.layout;
+    const x = layout.col*cellW+2, y = layout.row*cellH+2, w = cellW-4, h = cellH-4;
+    const isActive   = z.id === current;
     const isDragging = wDrag && wDrag.id === z.id;
+    const isCustom   = !z.builtin;
 
     wctx.fillStyle   = isActive ? '#1a3a1a' : isDragging ? '#1e3a5c' : '#0f172a';
-    wctx.strokeStyle = isActive ? '#a3e635' : isDragging ? '#60a5fa' : '#334155';
+    wctx.strokeStyle = isActive ? '#a3e635' : isDragging ? '#60a5fa' : isCustom ? '#3b4a6b' : '#334155';
     wctx.lineWidth   = isActive || isDragging ? 2 : 1;
-    wctx.beginPath(); wctx.roundRect(x, y, w, h, 3); wctx.fill(); wctx.stroke();
+    wctx.beginPath(); wctx.roundRect(x,y,w,h,3); wctx.fill(); wctx.stroke();
 
-    // Abbreviation
-    const abbr = z.name.split(' ').map(w => w[0]).join('').slice(0, 3);
-    wctx.fillStyle = isActive ? '#a3e635' : '#64748b';
+    const abbr = z.name.split(' ').map(w=>w[0]).join('').slice(0,3);
+    wctx.fillStyle = isActive ? '#a3e635' : isCustom ? '#60a5fa' : '#64748b';
     wctx.font = `bold 9px system-ui`;
     wctx.textAlign = 'center'; wctx.textBaseline = 'middle';
-    wctx.fillText(abbr, x + w / 2, y + h / 2);
+    wctx.fillText(abbr, x+w/2, y+h/2);
 
-    // Migs dot
     if (z.migs) {
       wctx.fillStyle = '#f59e0b';
-      wctx.beginPath(); wctx.arc(x + w - 4, y + 4, 2.5, 0, Math.PI * 2); wctx.fill();
+      wctx.beginPath(); wctx.arc(x+w-4,y+4,2.5,0,Math.PI*2); wctx.fill();
     }
-  }
+  });
 }
 
-// World map mouse events for drag + click
 worldCanvas.addEventListener('mousedown', e => {
   const { col, row } = canvasToCell(e);
   const z = zoneAtCell(col, row);
-  if (z) {
-    wDrag = { id: z.id, mouseCol: col, mouseRow: row };
-    worldCanvas.style.cursor = 'grabbing';
-  }
+  if (z) { wDrag = { id:z.id, mouseCol:col, mouseRow:row }; worldCanvas.style.cursor='grabbing'; }
 });
-
 worldCanvas.addEventListener('mousemove', e => {
   if (!wDrag) return;
   const { col, row } = canvasToCell(e);
-  if (col !== wDrag.mouseCol || row !== wDrag.mouseRow) {
-    wDrag.mouseCol = Math.max(0, Math.min(COLS - 1, col));
-    wDrag.mouseRow = Math.max(0, Math.min(ROWS - 1, row));
-    drawWorldMap();
-  }
+  const cc = Math.max(0,Math.min(COLS-1,col)), cr = Math.max(0,Math.min(ROWS-1,row));
+  if (cc!==wDrag.mouseCol||cr!==wDrag.mouseRow) { wDrag.mouseCol=cc; wDrag.mouseRow=cr; drawWorldMap(); }
 });
-
 worldCanvas.addEventListener('mouseup', e => {
   if (!wDrag) return;
   const { col, row } = canvasToCell(e);
-  const clampedCol = Math.max(0, Math.min(COLS - 1, col));
-  const clampedRow = Math.max(0, Math.min(ROWS - 1, row));
+  const cc = Math.max(0,Math.min(COLS-1,col)), cr = Math.max(0,Math.min(ROWS-1,row));
   const movedZone = zones[wDrag.id];
-
-  // Check if another zone is already at this cell — swap them
-  const occupant = zoneAtCell(clampedCol, clampedRow);
-  if (occupant && occupant.id !== wDrag.id) {
-    occupant.layout = { ...movedZone.layout };
-  }
-  movedZone.layout = { col: clampedCol, row: clampedRow };
-
-  // If it was just a click (no real move), select the zone
-  if (clampedCol === wDrag.mouseCol && clampedRow === wDrag.mouseRow && movedZone.layout.col === clampedCol) {
-    selectZone(wDrag.id);
-  }
-
-  wDrag = null;
-  worldCanvas.style.cursor = 'default';
-  saveToLS();
-  drawWorldMap();
-  setStatus(`${movedZone.name} positioned at grid (${clampedCol}, ${clampedRow})`);
+  const occupant = zoneAtCell(cc, cr);
+  if (occupant && occupant.id !== wDrag.id) occupant.layout = { ...movedZone.layout };
+  movedZone.layout = { col:cc, row:cr };
+  const wasClick = (cc===wDrag.mouseCol && cr===wDrag.mouseRow);
+  wDrag = null; worldCanvas.style.cursor='default';
+  saveToLS(); drawWorldMap();
+  if (wasClick) selectZone(movedZone.id);
+  else setStatus(`${movedZone.name} moved to grid (${cc},${cr})`);
 });
-
 worldCanvas.addEventListener('mouseleave', () => {
-  if (wDrag) {
-    // Drop at last valid position
-    zones[wDrag.id].layout = { col: wDrag.mouseCol, row: wDrag.mouseRow };
-    wDrag = null;
-    worldCanvas.style.cursor = 'default';
-    saveToLS(); drawWorldMap();
-  }
+  if (!wDrag) return;
+  zones[wDrag.id].layout = { col:wDrag.mouseCol, row:wDrag.mouseRow };
+  wDrag=null; worldCanvas.style.cursor='default'; saveToLS(); drawWorldMap();
 });
-
-// Click to select (handled on mouseup above — this covers empty cell clicks)
 worldCanvas.addEventListener('click', e => {
   if (wDrag) return;
-  const { col, row } = canvasToCell(e);
-  const z = zoneAtCell(col, row);
-  if (z) selectZone(z.id);
+  const {col,row} = canvasToCell(e);
+  const z = zoneAtCell(col,row); if(z) selectZone(z.id);
 });
-
 function canvasToCell(e) {
   const rect = worldCanvas.getBoundingClientRect();
-  const mx = (e.clientX - rect.left) * (WCW / rect.width);
-  const my = (e.clientY - rect.top)  * (WCH / rect.height);
-  return { col: Math.floor(mx / cellW), row: Math.floor(my / cellH) };
+  return { col:Math.floor((e.clientX-rect.left)*(WCW/rect.width)/cellW), row:Math.floor((e.clientY-rect.top)*(WCH/rect.height)/cellH) };
 }
 
 // ════════════════════════════════════════════════════
@@ -541,42 +514,24 @@ function canvasToCell(e) {
 function renderEditor() {
   if (!current) return;
   const z = zones[current];
-  ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
-
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const t = z.tiles[y * MAP_W + x] || 0;
-      ctx.fillStyle = TILE_COLORS[t] || TILE_COLORS[0];
-      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
-      ctx.strokeStyle = TILE_BORDERS[t] || TILE_BORDERS[0];
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x * CELL + .5, y * CELL + .5, CELL - 1, CELL - 1);
-    }
+  ctx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+  for (let y=0;y<MAP_H;y++) for (let x=0;x<MAP_W;x++) {
+    const t = z.tiles[y*MAP_W+x]||0;
+    ctx.fillStyle=TILE_COLORS[t]||TILE_COLORS[0]; ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+    ctx.strokeStyle=TILE_BORDERS[t]||TILE_BORDERS[0]; ctx.lineWidth=0.5;
+    ctx.strokeRect(x*CELL+.5,y*CELL+.5,CELL-1,CELL-1);
   }
-
-  // Blocked
-  ctx.fillStyle = 'rgba(239,68,68,0.3)';
-  for (const key of z.blocked) {
-    const [bx, by] = key.split(',').map(Number);
-    ctx.fillRect(bx * CELL, by * CELL, CELL, CELL);
-  }
-
-  // Portals
+  ctx.fillStyle='rgba(239,68,68,0.3)';
+  for (const key of z.blocked) { const [bx,by]=key.split(',').map(Number); ctx.fillRect(bx*CELL,by*CELL,CELL,CELL); }
   z.portals.forEach(p => {
-    ctx.fillStyle = 'rgba(163,230,53,0.5)';
-    ctx.fillRect(p.x * CELL, p.y * CELL, CELL, CELL);
-    ctx.fillStyle = '#a3e635'; ctx.font = 'bold 8px system-ui';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('P', p.x * CELL + CELL / 2, p.y * CELL + CELL / 2);
+    ctx.fillStyle='rgba(163,230,53,0.5)'; ctx.fillRect(p.x*CELL,p.y*CELL,CELL,CELL);
+    ctx.fillStyle='#a3e635'; ctx.font='bold 8px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('P',p.x*CELL+CELL/2,p.y*CELL+CELL/2);
   });
-
-  // Migs
   if (z.migs) {
-    ctx.fillStyle = 'rgba(245,158,11,0.65)';
-    ctx.fillRect(z.migs.x * CELL, z.migs.y * CELL, CELL, CELL);
-    ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 8px system-ui';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('M', z.migs.x * CELL + CELL / 2, z.migs.y * CELL + CELL / 2);
+    ctx.fillStyle='rgba(245,158,11,0.65)'; ctx.fillRect(z.migs.x*CELL,z.migs.y*CELL,CELL,CELL);
+    ctx.fillStyle='#fbbf24'; ctx.font='bold 8px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('M',z.migs.x*CELL+CELL/2,z.migs.y*CELL+CELL/2);
   }
 }
 
@@ -584,137 +539,112 @@ function renderEditor() {
 // MOUSE PAINTING
 // ════════════════════════════════════════════════════
 function getCell(e) {
-  const rect = mapCanvas.getBoundingClientRect();
-  const cx = Math.floor((e.clientX - rect.left) * (mapCanvas.width  / rect.width)  / CELL);
-  const cy = Math.floor((e.clientY - rect.top)  * (mapCanvas.height / rect.height) / CELL);
-  return { x: Math.max(0, Math.min(MAP_W - 1, cx)), y: Math.max(0, Math.min(MAP_H - 1, cy)) };
+  const rect=mapCanvas.getBoundingClientRect();
+  return { x:Math.max(0,Math.min(MAP_W-1,Math.floor((e.clientX-rect.left)*(mapCanvas.width/rect.width)/CELL))), y:Math.max(0,Math.min(MAP_H-1,Math.floor((e.clientY-rect.top)*(mapCanvas.height/rect.height)/CELL))) };
 }
+mapCanvas.addEventListener('mousedown',e=>{painting=true;applyPaint(getCell(e));});
+mapCanvas.addEventListener('mousemove',e=>{if(!painting)return;const c=getCell(e);setStatus(`Tile (${c.x},${c.y})`);applyPaint(c);});
+mapCanvas.addEventListener('mouseup',()=>{painting=false;saveToLS();renderRightPanel();});
+mapCanvas.addEventListener('mouseleave',()=>{if(painting){painting=false;saveToLS();}});
+mapCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 
-mapCanvas.addEventListener('mousedown', e => { painting = true; applyPaint(getCell(e)); });
-mapCanvas.addEventListener('mousemove', e => {
-  if (!painting) return;
-  const c = getCell(e);
-  setStatus(`Tile (${c.x}, ${c.y})`);
-  applyPaint(c);
-});
-mapCanvas.addEventListener('mouseup', () => { painting = false; saveToLS(); renderRightPanel(); });
-mapCanvas.addEventListener('mouseleave', () => { if (painting) { painting = false; saveToLS(); } });
-mapCanvas.addEventListener('contextmenu', e => e.preventDefault());
-
-function applyPaint({ x, y }) {
+function applyPaint({x,y}) {
   if (!current) return;
   const z = zones[current];
-  if (typeof paintMode === 'number') {
-    z.tiles[y * MAP_W + x] = paintMode;
-    renderEditor();
-  } else if (paintMode === 'blocked') {
-    z.blocked.add(`${x},${y}`); renderEditor();
-  } else if (paintMode === 'unblocked') {
-    z.blocked.delete(`${x},${y}`); renderEditor();
-  } else if (paintMode === 'migs') {
-    z.migs = { x, y }; renderEditor(); renderRightPanel();
-    setStatus(`Migs placed at (${x}, ${y})`);
-  } else if (paintMode === 'portal') {
-    openPortalModal(x, y);
-  }
+  if (typeof paintMode==='number') { z.tiles[y*MAP_W+x]=paintMode; renderEditor(); }
+  else if (paintMode==='blocked')   { z.blocked.add(`${x},${y}`); renderEditor(); }
+  else if (paintMode==='unblocked') { z.blocked.delete(`${x},${y}`); renderEditor(); }
+  else if (paintMode==='migs')      { z.migs={x,y}; renderEditor(); renderRightPanel(); setStatus(`Migs placed at (${x},${y})`); }
+  else if (paintMode==='portal')    { openPortalModal(x,y); }
 }
 
 // ════════════════════════════════════════════════════
 // PORTAL MODAL
 // ════════════════════════════════════════════════════
-function openPortalModal(x, y) {
-  painting = false;
-  pendingPortal = { x, y };
-  const sel = document.getElementById('m-dest');
-  sel.innerHTML = Object.values(zones)
-    .filter(z => z.id !== current)
-    .map(z => `<option value="${z.id}">${z.name}</option>`)
-    .join('');
-  document.getElementById('m-dx').value = x === 0 ? 1 : x === MAP_W - 1 ? MAP_W - 2 : x;
-  document.getElementById('m-dy').value = y === 0 ? 1 : y === MAP_H - 1 ? MAP_H - 2 : y;
-  document.getElementById('m-label').value = '';
-  document.getElementById('modal-title').textContent = `Place Portal at tile (${x}, ${y})`;
+function openPortalModal(x,y) {
+  painting=false; pendingPortal={x,y};
+  const sel=document.getElementById('m-dest');
+  sel.innerHTML=Object.values(zones).filter(z=>z.id!==current).map(z=>`<option value="${z.id}">${z.name}</option>`).join('');
+  document.getElementById('m-dx').value=x===0?1:x===MAP_W-1?MAP_W-2:x;
+  document.getElementById('m-dy').value=y===0?1:y===MAP_H-1?MAP_H-2:y;
+  document.getElementById('m-label').value='';
+  document.getElementById('modal-title').textContent=`Place Portal at tile (${x},${y})`;
   document.getElementById('modal-overlay').classList.add('open');
 }
-
-document.getElementById('modal-confirm').addEventListener('click', () => {
-  if (!pendingPortal || !current) return;
-  const destZone = document.getElementById('m-dest').value;
-  const destX    = parseInt(document.getElementById('m-dx').value) || 1;
-  const destY    = parseInt(document.getElementById('m-dy').value) || 20;
-  const label    = document.getElementById('m-label').value.trim() || `${zones[destZone]?.name || destZone} →`;
-  zones[current].portals.push({ x: pendingPortal.x, y: pendingPortal.y, destZone, destX, destY, label });
+document.getElementById('modal-confirm').addEventListener('click',()=>{
+  if(!pendingPortal||!current)return;
+  const destZone=document.getElementById('m-dest').value;
+  const destX=parseInt(document.getElementById('m-dx').value)||1;
+  const destY=parseInt(document.getElementById('m-dy').value)||20;
+  const label=document.getElementById('m-label').value.trim()||`${zones[destZone]?.name||destZone} →`;
+  zones[current].portals.push({x:pendingPortal.x,y:pendingPortal.y,destZone,destX,destY,label});
   document.getElementById('modal-overlay').classList.remove('open');
-  pendingPortal = null;
-  saveToLS(); renderEditor(); renderRightPanel(); drawWorldMap();
-  setStatus(`Portal added → ${zones[destZone]?.name || destZone}`);
+  pendingPortal=null; saveToLS(); renderEditor(); renderRightPanel(); drawWorldMap();
+  setStatus(`Portal added → ${zones[destZone]?.name||destZone}`);
 });
-document.getElementById('modal-cancel').addEventListener('click', () => {
-  document.getElementById('modal-overlay').classList.remove('open');
-  pendingPortal = null;
+document.getElementById('modal-cancel').addEventListener('click',()=>{
+  document.getElementById('modal-overlay').classList.remove('open'); pendingPortal=null;
 });
 
 // ════════════════════════════════════════════════════
 // RIGHT PANEL
 // ════════════════════════════════════════════════════
 function renderRightPanel() {
-  if (!current) { portalListEl.innerHTML = ''; migsSectionEl.innerHTML = ''; return; }
+  if (!current) { portalListEl.innerHTML=''; migsSectionEl.innerHTML=''; return; }
   const z = zones[current];
-
-  // Portals
-  portalListEl.innerHTML = '';
+  portalListEl.innerHTML='';
   if (!z.portals.length) {
-    portalListEl.innerHTML = '<div class="no-items">No portals yet</div>';
+    portalListEl.innerHTML='<div class="no-items">No portals yet</div>';
   } else {
-    z.portals.forEach((p, i) => {
-      const el = document.createElement('div'); el.className = 'portal-item';
-      const destName = zones[p.destZone]?.name || p.destZone;
-      el.innerHTML = `<span class="pi-label">(${p.x},${p.y})→${destName}</span><button class="del-btn" title="Remove">✕</button>`;
-      el.querySelector('.del-btn').addEventListener('click', () => {
-        z.portals.splice(i, 1); saveToLS(); renderEditor(); renderRightPanel(); drawWorldMap();
-      });
+    z.portals.forEach((p,i)=>{
+      const el=document.createElement('div'); el.className='portal-item';
+      const destName=zones[p.destZone]?.name||p.destZone;
+      el.innerHTML=`<span class="pi-label">(${p.x},${p.y})→${destName}</span><button class="del-btn">✕</button>`;
+      el.querySelector('.del-btn').addEventListener('click',()=>{z.portals.splice(i,1);saveToLS();renderEditor();renderRightPanel();drawWorldMap();});
       portalListEl.appendChild(el);
     });
   }
-
-  // Migs
-  migsSectionEl.innerHTML = '';
+  migsSectionEl.innerHTML='';
   if (z.migs) {
-    const el = document.createElement('div'); el.className = 'migs-item';
-    el.innerHTML = `<span style="flex:1">👤 Migs @ (${z.migs.x}, ${z.migs.y})</span><button class="del-btn">✕</button>`;
-    el.querySelector('.del-btn').addEventListener('click', () => {
-      z.migs = null; saveToLS(); renderEditor(); renderRightPanel();
-    });
+    const el=document.createElement('div'); el.className='migs-item';
+    el.innerHTML=`<span style="flex:1">👤 Migs @ (${z.migs.x},${z.migs.y})</span><button class="del-btn">✕</button>`;
+    el.querySelector('.del-btn').addEventListener('click',()=>{z.migs=null;saveToLS();renderEditor();renderRightPanel();});
     migsSectionEl.appendChild(el);
   } else {
-    migsSectionEl.innerHTML = '<div class="no-items">No Migs here</div>';
+    migsSectionEl.innerHTML='<div class="no-items">No Migs here</div>';
   }
 }
 
 // ════════════════════════════════════════════════════
-// EXPORT
+// EXPORT — all zones including custom ones
 // ════════════════════════════════════════════════════
 function zoneToJSON(z) {
-  return JSON.stringify({ w: MAP_W, h: MAP_H, tiles: z.tiles, blocked: [...z.blocked] });
+  return JSON.stringify({ w:MAP_W, h:MAP_H, tiles:z.tiles, blocked:[...z.blocked] });
 }
 
 function buildZonesJS() {
+  // ★ Object.values(zones) includes ALL zones — builtin AND custom
   const entries = Object.values(zones).map(z => {
+    const safeId = z.id.replace(/[^a-zA-Z0-9_]/g,'_');
     const portalsStr = z.portals.map(p =>
       `      { x:${p.x}, y:${p.y}, destZone:'${p.destZone}', destX:${p.destX}, destY:${p.destY}, label:'${p.label}' }`
     ).join(',\n');
-    const migsStr = z.migs ? `{ x:${z.migs.x}, y:${z.migs.y} }` : 'null';
-    const spawnX  = z.migs ? z.migs.x : 30;
-    const spawnY  = z.migs ? z.migs.y : 20;
-    const safeId  = z.id.replace(/[^a-zA-Z0-9_]/g, '_');
+    const migsStr  = z.migs ? `{ x:${z.migs.x}, y:${z.migs.y} }` : 'null';
+    const spawnX   = z.migs ? z.migs.x : 30;
+    const spawnY   = z.migs ? z.migs.y : 20;
     return `  ${safeId}: {\n    id:'${z.id}',\n    name:'${z.name}',\n    mapFile:'${z.id}.json',\n    portals:[\n${portalsStr}\n    ],\n    migs:${migsStr},\n    defaultSpawn:{x:${spawnX},y:${spawnY}},\n  }`;
   }).join(',\n');
-  return `// Auto-generated by Lerma Map Maker\nimport { readFileSync } from 'fs';\nimport { fileURLToPath } from 'url';\nimport { dirname, join } from 'path';\nconst __dirname = dirname(fileURLToPath(import.meta.url));\n\nexport const ZONES = {\n${entries}\n};\n\nconst mapCache = {};\nexport function getZoneMap(zoneId) {\n  if (mapCache[zoneId]) return mapCache[zoneId];\n  const zone = ZONES[zoneId];\n  if (!zone) throw new Error(\`Unknown zone: \${zoneId}\`);\n  const data = JSON.parse(readFileSync(join(__dirname, 'zones', zone.mapFile), 'utf8'));\n  const blockedSet = new Set(data.blocked || []);\n  const map = { w:data.w, h:data.h, tiles:data.tiles, isBlocked:(x,y)=>blockedSet.has(\`\${x},\${y}\`) };\n  mapCache[zoneId] = map;\n  return map;\n}\nexport function checkPortal(zoneId, x, y) {\n  const zone = ZONES[zoneId];\n  if (!zone) return null;\n  return zone.portals.find(p => p.x === x && p.y === y) || null;\n}\n`;
+
+  return `// Auto-generated by Lerma Map Maker — ${new Date().toISOString()}\nimport { readFileSync } from 'fs';\nimport { fileURLToPath } from 'url';\nimport { dirname, join } from 'path';\nconst __dirname = dirname(fileURLToPath(import.meta.url));\n\nexport const ZONES = {\n${entries}\n};\n\nconst mapCache = {};\nexport function getZoneMap(zoneId) {\n  if (mapCache[zoneId]) return mapCache[zoneId];\n  const zone = ZONES[zoneId];\n  if (!zone) throw new Error(\`Unknown zone: \${zoneId}\`);\n  const data = JSON.parse(readFileSync(join(__dirname, 'zones', zone.mapFile), 'utf8'));\n  const blockedSet = new Set(data.blocked || []);\n  const map = { w:data.w, h:data.h, tiles:data.tiles, isBlocked:(x,y)=>blockedSet.has(\`\${x},\${y}\`) };\n  mapCache[zoneId] = map;\n  return map;\n}\nexport function checkPortal(zoneId, x, y) {\n  const zone = ZONES[zoneId];\n  if (!zone) return null;\n  return zone.portals.find(p => p.x === x && p.y === y) || null;\n}\n`;
 }
 
 document.getElementById('export-btn').addEventListener('click', async () => {
-  for (const z of Object.values(zones)) {
-    const blob = new Blob([zoneToJSON(z)], { type: 'application/json' });
+  const allZones = Object.values(zones);
+  setStatus(`Downloading ${allZones.length} zone files + zones.js…`);
+
+  // Download every zone JSON (builtin + custom)
+  for (const z of allZones) {
+    const blob = new Blob([zoneToJSON(z)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${z.id}.json`;
@@ -722,30 +652,31 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     URL.revokeObjectURL(a.href);
     await new Promise(r => setTimeout(r, 80));
   }
-  const blob2 = new Blob([buildZonesJS()], { type: 'text/javascript' });
+
+  // Download zones.js (not zones_export.js — just zones.js, ready to drop in)
+  const blob2 = new Blob([buildZonesJS()], {type:'text/javascript'});
   const a2 = document.createElement('a');
   a2.href = URL.createObjectURL(blob2);
   a2.download = 'zones.js';
   a2.click();
   URL.revokeObjectURL(a2.href);
-  setStatus('Downloaded! Upload the JSONs to both repos, zones.js to server, then pm2 restart all.');
+
+  setStatus(`Done! ${allZones.length} JSONs + zones.js downloaded. Upload to both repos, then pm2 restart all.`);
 });
 
 document.getElementById('copy-btn').addEventListener('click', () => {
   if (!current) return;
   const text = zoneToJSON(zones[current]);
   navigator.clipboard.writeText(text).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); ta.remove();
+    const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
   });
-  setStatus('JSON copied to clipboard!');
+  setStatus(`Copied ${current}.json to clipboard!`);
 });
 
 document.getElementById('clear-storage-btn').addEventListener('click', () => {
-  if (!confirm('Clear saved layout? This will reset positions and names to defaults on next load.')) return;
+  if (!confirm('Reset all saved edits and layout? Tile changes will be lost.')) return;
   localStorage.removeItem(LS_KEY);
-  setStatus('Saved layout cleared. Refresh to reload defaults.');
+  setStatus('Cleared. Refresh the page to reload from defaults.');
 });
 
 // ════════════════════════════════════════════════════
